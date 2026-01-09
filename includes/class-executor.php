@@ -104,8 +104,14 @@ class Executor {
         // Clean the path
         $relative_path = ltrim($relative_path, '/\\');
 
+        if (empty($relative_path)) {
+            throw new \Exception("Path cannot be empty");
+        }
+
         // Build full path
         $full_path = $this->wp_content_path . '/' . $relative_path;
+
+        error_log('[AI Assistant] resolve_path: relative=' . $relative_path . ', full=' . $full_path);
 
         // Resolve real path (handles ../ etc)
         $real_path = realpath(dirname($full_path));
@@ -118,9 +124,20 @@ class Executor {
             $real_path = realpath($parent);
         }
 
+        $wp_content_real = realpath($this->wp_content_path);
+        error_log('[AI Assistant] resolve_path: real_path=' . ($real_path ?: 'false') . ', wp_content=' . $wp_content_real);
+
         // Security check: ensure path is within wp-content
-        if ($real_path === false || strpos($real_path, realpath($this->wp_content_path)) !== 0) {
-            throw new \Exception("Access denied: Path must be within wp-content directory");
+        if ($real_path === false) {
+            throw new \Exception("Access denied: Cannot resolve path '$relative_path' (directory may not exist)");
+        }
+
+        if ($wp_content_real === false) {
+            throw new \Exception("Server error: wp-content directory not found at " . $this->wp_content_path);
+        }
+
+        if (strpos($real_path, $wp_content_real) !== 0) {
+            throw new \Exception("Access denied: Path '$relative_path' is outside wp-content directory");
         }
 
         return $full_path;

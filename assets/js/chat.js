@@ -631,6 +631,8 @@ Always explain what you're about to do before using tools. When modifying files,
         executeSingleTool: function(toolCall) {
             var self = this;
             var toolName = toolCall.name || toolCall.tool;
+            console.log('[AI Assistant] Executing tool:', toolName, 'with arguments:', toolCall.arguments);
+
             return new Promise(function(resolve, reject) {
                 $.ajax({
                     url: aiAssistantConfig.ajaxUrl,
@@ -642,18 +644,55 @@ Always explain what you're about to do before using tools. When modifying files,
                         arguments: JSON.stringify(toolCall.arguments)
                     },
                     success: function(response) {
+                        console.log('[AI Assistant] Tool response for', toolName, ':', response);
+
+                        var errorMessage = '';
+                        if (!response.success) {
+                            errorMessage = response.data?.message || response.data?.error || 'Unknown error';
+                            if (!errorMessage && typeof response.data === 'string') {
+                                errorMessage = response.data;
+                            }
+                            if (!errorMessage) {
+                                errorMessage = 'Tool execution failed (no error message provided)';
+                                console.warn('[AI Assistant] No error message in response:', response);
+                            }
+                        }
+
                         resolve({
                             id: toolCall.id,
                             name: toolName,
-                            result: response.success ? response.data : { error: response.data.message },
+                            result: response.success ? response.data : { error: errorMessage },
                             success: response.success
                         });
                     },
-                    error: function(xhr, status, error) {
+                    error: function(xhr, status, errorThrown) {
+                        var errorMessage = 'AJAX error: ';
+
+                        // Try to get detailed error info
+                        if (xhr.responseJSON && xhr.responseJSON.data) {
+                            errorMessage += xhr.responseJSON.data.message || JSON.stringify(xhr.responseJSON.data);
+                        } else if (xhr.responseText) {
+                            // Might be PHP error or HTML
+                            errorMessage += xhr.responseText.substring(0, 500);
+                        } else if (errorThrown) {
+                            errorMessage += errorThrown;
+                        } else {
+                            errorMessage += 'status=' + status + ', HTTP ' + xhr.status;
+                        }
+
+                        console.error('[AI Assistant] Tool execution failed:', {
+                            tool: toolName,
+                            status: status,
+                            error: errorThrown,
+                            httpStatus: xhr.status,
+                            responseText: xhr.responseText,
+                            responseJSON: xhr.responseJSON
+                        });
+
                         resolve({
                             id: toolCall.id,
                             name: toolName,
-                            result: { error: error },
+                            result: { error: errorMessage },
                             success: false
                         });
                     }
@@ -829,9 +868,19 @@ Always explain what you're about to do before using tools. When modifying files,
             results.forEach(function(result) {
                 var statusClass = result.success ? 'success' : 'error';
                 var statusIcon = result.success ? '&#10003;' : '&#10007;';
-                var resultStr = typeof result.result === 'object'
-                    ? JSON.stringify(result.result, null, 2)
-                    : result.result;
+
+                var resultStr;
+                if (typeof result.result === 'object') {
+                    // Check for empty error messages
+                    if (result.result.error === '' || result.result.error === undefined) {
+                        result.result.error = result.result.error === ''
+                            ? '(empty error - check browser console for details)'
+                            : undefined;
+                    }
+                    resultStr = JSON.stringify(result.result, null, 2);
+                } else {
+                    resultStr = result.result || '(no result data)';
+                }
 
                 var content = '<div class="ai-tool-result ai-tool-result-' + statusClass + '">' +
                     '<div class="ai-tool-header">' +

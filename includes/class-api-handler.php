@@ -31,26 +31,38 @@ class API_Handler {
 
         $permission = ai_assistant()->settings()->get_user_permission_level();
         if ($permission === 'none' || $permission === 'chat_only') {
-            wp_send_json_error(['message' => 'Tool execution not allowed']);
+            error_log('[AI Assistant] Tool execution denied: permission=' . $permission);
+            wp_send_json_error(['message' => 'Tool execution not allowed (permission: ' . $permission . ')']);
         }
 
         $tool_name = sanitize_text_field($_POST['tool'] ?? '');
         $arguments_json = stripslashes($_POST['arguments'] ?? '{}');
         $arguments = json_decode($arguments_json, true);
 
+        error_log('[AI Assistant] Executing tool: ' . $tool_name . ' with args: ' . $arguments_json);
+
         if (empty($tool_name)) {
+            error_log('[AI Assistant] Error: Tool name is empty');
             wp_send_json_error(['message' => 'Tool name is required']);
         }
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            wp_send_json_error(['message' => 'Invalid arguments JSON']);
+            error_log('[AI Assistant] Error: Invalid JSON - ' . json_last_error_msg());
+            wp_send_json_error(['message' => 'Invalid arguments JSON: ' . json_last_error_msg()]);
         }
 
         try {
             $result = $this->executor->execute_tool($tool_name, $arguments, $permission);
+            error_log('[AI Assistant] Tool success: ' . $tool_name);
             wp_send_json_success($result);
         } catch (\Exception $e) {
-            wp_send_json_error(['message' => $e->getMessage()]);
+            $error_message = $e->getMessage();
+            if (empty($error_message)) {
+                $error_message = 'Unknown error (exception class: ' . get_class($e) . ')';
+            }
+            error_log('[AI Assistant] Tool error: ' . $tool_name . ' - ' . $error_message);
+            error_log('[AI Assistant] Stack trace: ' . $e->getTraceAsString());
+            wp_send_json_error(['message' => $error_message]);
         }
     }
 }
