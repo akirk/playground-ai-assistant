@@ -146,7 +146,10 @@ class Chat_UI {
                 } else {
                     // Open our panel
                     $wrap.removeClass('hidden').addClass('screen-meta-active').slideDown('fast', function() {
-                        $('#ai-assistant-input').focus();
+                        // Use setTimeout to ensure the browser has completed rendering
+                        setTimeout(function() {
+                            $('#ai-assistant-input').trigger('focus');
+                        }, 50);
                     });
                     $button.attr('aria-expanded', 'true');
 
