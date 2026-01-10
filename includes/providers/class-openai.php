@@ -19,7 +19,7 @@ class OpenAI extends LLM_Provider {
 
     public function __construct() {
         $this->api_key = ai_assistant()->settings()->get_api_key('openai');
-        $this->model = get_option('ai_assistant_model', 'gpt-4o');
+        $this->model = get_option('ai_assistant_model');
     }
 
     /**

@@ -1158,6 +1158,7 @@ Always explain what you're about to do before using tools.`;
             // Generate HTML with diff highlighting for edit_file
             var html;
             if (isEdit) {
+                // For diffs, wrap every line in a block span (no newlines needed since display:block)
                 html = content.split('\n').map(function(line) {
                     var escaped = self.escapeHtml(line);
                     if (line.startsWith('+ ')) {
@@ -1169,8 +1170,8 @@ Always explain what you're about to do before using tools.`;
                     } else if (line.startsWith('  ')) {
                         return '<span class="ai-diff-line ai-diff-context">' + escaped + '</span>';
                     }
-                    return escaped;
-                }).join('\n');
+                    return '<span class="ai-diff-line">' + escaped + '</span>';
+                }).join('');
             } else {
                 html = self.escapeHtml(content);
             }

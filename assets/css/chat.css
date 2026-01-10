@@ -368,7 +368,8 @@
     padding: 10px;
     margin: 0;
     font-size: 11px;
-    white-space: normal;
+    white-space: pre-wrap;
+    word-wrap: break-word;
     font-family: Consolas, Monaco, monospace;
 }
 

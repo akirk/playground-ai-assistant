@@ -20,7 +20,7 @@ class Anthropic extends LLM_Provider {
 
     public function __construct() {
         $this->api_key = ai_assistant()->settings()->get_api_key('anthropic');
-        $this->model = get_option('ai_assistant_model', 'claude-sonnet-4-5-20250929');
+        $this->model = get_option('ai_assistant_model');
     }
 
     /**
@@ -65,11 +65,12 @@ class Anthropic extends LLM_Provider {
      */
     public function get_available_models(): array {
         return [
-            // Current models
+            // Current 4.5 models
             ['id' => 'claude-sonnet-4-5-20250929', 'name' => 'Claude Sonnet 4.5'],
             ['id' => 'claude-haiku-4-5-20251001', 'name' => 'Claude Haiku 4.5'],
             ['id' => 'claude-opus-4-5-20251101', 'name' => 'Claude Opus 4.5'],
             // Legacy models
+            ['id' => 'claude-opus-4-1-20250805', 'name' => 'Claude Opus 4.1'],
             ['id' => 'claude-sonnet-4-20250514', 'name' => 'Claude Sonnet 4'],
             ['id' => 'claude-opus-4-20250514', 'name' => 'Claude Opus 4'],
             ['id' => 'claude-3-haiku-20240307', 'name' => 'Claude 3 Haiku'],

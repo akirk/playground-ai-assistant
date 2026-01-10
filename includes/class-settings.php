@@ -16,7 +16,26 @@ class Settings {
         $this->encryption_key = $this->get_encryption_key();
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('admin_init', [$this, 'register_settings']);
-        // Note: Connection testing and model fetching now happens client-side via JavaScript
+        add_action('wp_ajax_ai_assistant_save_model', [$this, 'ajax_save_model']);
+    }
+
+    /**
+     * AJAX handler to save model selection
+     */
+    public function ajax_save_model() {
+        check_ajax_referer('ai_assistant_settings', '_wpnonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $model = sanitize_text_field($_POST['model'] ?? '');
+        if (empty($model)) {
+            wp_send_json_error(['message' => 'Model is required']);
+        }
+
+        update_option('ai_assistant_model', $model);
+        wp_send_json_success(['model' => $model]);
     }
 
     /**
@@ -559,6 +578,8 @@ class Settings {
         <script>
             var aiAssistantCurrentModel = '<?php echo esc_js($model); ?>';
             var aiAssistantCurrentProvider = '<?php echo esc_js($provider); ?>';
+            var aiAssistantSettingsNonce = '<?php echo wp_create_nonce('ai_assistant_settings'); ?>';
+            var aiAssistantAjaxUrl = '<?php echo admin_url('admin-ajax.php'); ?>';
         </script>
         <?php
     }
@@ -647,39 +668,174 @@ class Settings {
                 loadModels(provider);
             });
 
-            // Load models for selected provider (static lists for cloud, fetch for local)
+            // Fetch OpenAI models from API
+            async function fetchOpenAIModels() {
+                var apiKey = $('#ai_assistant_openai_api_key').val();
+
+                if (!apiKey || apiKey.indexOf('***') === 0) {
+                    return null;
+                }
+
+                try {
+                    var response = await fetch('https://api.openai.com/v1/models', {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': 'Bearer ' + apiKey
+                        }
+                    });
+
+                    if (response.ok) {
+                        var data = await response.json();
+                        if (data.data && data.data.length > 0) {
+                            // Filter to chat models and sort by id
+                            var chatModels = data.data
+                                .filter(function(m) {
+                                    return m.id.indexOf('gpt-') === 0 &&
+                                           m.id.indexOf('instruct') === -1 &&
+                                           m.id.indexOf('realtime') === -1;
+                                })
+                                .map(function(m) {
+                                    return {id: m.id, name: m.id};
+                                })
+                                .sort(function(a, b) {
+                                    // Prioritize gpt-4o models
+                                    if (a.id.indexOf('gpt-4o') === 0 && b.id.indexOf('gpt-4o') !== 0) return -1;
+                                    if (b.id.indexOf('gpt-4o') === 0 && a.id.indexOf('gpt-4o') !== 0) return 1;
+                                    return a.id.localeCompare(b.id);
+                                });
+                            return chatModels;
+                        }
+                    }
+                } catch (e) {
+                    console.log('Failed to fetch OpenAI models:', e);
+                }
+                return null;
+            }
+
+            // Fetch Anthropic models from API
+            async function fetchAnthropicModels() {
+                var apiKey = $('#ai_assistant_anthropic_api_key').val();
+
+                if (!apiKey || apiKey.indexOf('***') === 0) {
+                    return null;
+                }
+
+                try {
+                    var response = await fetch('https://api.anthropic.com/v1/models?limit=100', {
+                        method: 'GET',
+                        headers: {
+                            'x-api-key': apiKey,
+                            'anthropic-version': '2023-06-01',
+                            'anthropic-dangerous-direct-browser-access': 'true'
+                        }
+                    });
+
+                    if (response.ok) {
+                        var data = await response.json();
+                        if (data.data && data.data.length > 0) {
+                            return data.data.map(function(m) {
+                                return {id: m.id, name: m.display_name || m.id};
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.log('Failed to fetch Anthropic models:', e);
+                }
+                return null;
+            }
+
+            // Load models for selected provider
             function loadModels(provider) {
                 var $select = $('#ai_assistant_model');
                 $select.empty();
 
-                var models = [];
                 switch (provider) {
                     case 'anthropic':
-                        models = [
-                            {id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4 (Recommended)'},
-                            {id: 'claude-opus-4-20250514', name: 'Claude Opus 4'},
-                            {id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet'},
-                            {id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku'}
-                        ];
-                        break;
+                        var apiKey = $('#ai_assistant_anthropic_api_key').val();
+                        if (!apiKey || apiKey.indexOf('***') === 0) {
+                            $select.html('<option value="">Enter API key to load models</option>');
+                            return;
+                        }
+                        $select.html('<option value="">Loading models...</option>');
+                        fetchAnthropicModels().then(function(models) {
+                            $select.empty();
+                            if (models && models.length > 0) {
+                                // Default to latest Sonnet if no model selected
+                                var selectedModel = aiAssistantCurrentModel;
+                                var shouldSave = false;
+                                if (!selectedModel) {
+                                    var sonnet = models.find(function(m) {
+                                        return m.id.indexOf('sonnet') > -1 && m.id.indexOf('4-5') > -1;
+                                    });
+                                    if (sonnet) {
+                                        selectedModel = sonnet.id;
+                                        aiAssistantCurrentModel = selectedModel;
+                                        shouldSave = true;
+                                    }
+                                }
+                                models.forEach(function(model) {
+                                    var selected = model.id === selectedModel ? 'selected' : '';
+                                    $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
+                                });
+                                // Auto-save if we selected a default model
+                                if (shouldSave && selectedModel) {
+                                    $.post(aiAssistantAjaxUrl, {
+                                        action: 'ai_assistant_save_model',
+                                        model: selectedModel,
+                                        _wpnonce: aiAssistantSettingsNonce
+                                    });
+                                }
+                            } else {
+                                $select.html('<option value="">Failed to load models - check API key</option>');
+                            }
+                        });
+                        return;
                     case 'openai':
-                        models = [
-                            {id: 'gpt-4o', name: 'GPT-4o (Recommended)'},
-                            {id: 'gpt-4o-mini', name: 'GPT-4o Mini'},
-                            {id: 'gpt-4-turbo', name: 'GPT-4 Turbo'},
-                            {id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo'}
-                        ];
-                        break;
+                        var openaiKey = $('#ai_assistant_openai_api_key').val();
+                        if (!openaiKey || openaiKey.indexOf('***') === 0) {
+                            $select.html('<option value="">Enter API key to load models</option>');
+                            return;
+                        }
+                        $select.html('<option value="">Loading models...</option>');
+                        fetchOpenAIModels().then(function(models) {
+                            $select.empty();
+                            if (models && models.length > 0) {
+                                var selectedModel = aiAssistantCurrentModel;
+                                var shouldSave = false;
+                                if (!selectedModel) {
+                                    // Prefer gpt-4o
+                                    var preferred = models.find(function(m) { return m.id === 'gpt-4o'; });
+                                    if (preferred) {
+                                        selectedModel = preferred.id;
+                                        aiAssistantCurrentModel = selectedModel;
+                                        shouldSave = true;
+                                    } else if (models.length > 0) {
+                                        selectedModel = models[0].id;
+                                        aiAssistantCurrentModel = selectedModel;
+                                        shouldSave = true;
+                                    }
+                                }
+                                models.forEach(function(model) {
+                                    var selected = model.id === selectedModel ? 'selected' : '';
+                                    $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
+                                });
+                                if (shouldSave && selectedModel) {
+                                    $.post(aiAssistantAjaxUrl, {
+                                        action: 'ai_assistant_save_model',
+                                        model: selectedModel,
+                                        _wpnonce: aiAssistantSettingsNonce
+                                    });
+                                }
+                            } else {
+                                $select.html('<option value="">Failed to load models - check API key</option>');
+                            }
+                        });
+                        return;
                     case 'local':
                         $select.html('<option value="">Loading from local server...</option>');
                         fetchLocalModels();
                         return;
                 }
-
-                models.forEach(function(model) {
-                    var selected = model.id === aiAssistantCurrentModel ? 'selected' : '';
-                    $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
-                });
             }
 
             // Fetch models from local LLM server
@@ -738,10 +894,24 @@ class Settings {
 
                 $select.empty();
                 if (models.length > 0) {
+                    var selectedModel = aiAssistantCurrentModel;
+                    var shouldSave = false;
+                    if (!selectedModel) {
+                        selectedModel = models[0].id;
+                        aiAssistantCurrentModel = selectedModel;
+                        shouldSave = true;
+                    }
                     models.forEach(function(model) {
-                        var selected = model.id === aiAssistantCurrentModel ? 'selected' : '';
+                        var selected = model.id === selectedModel ? 'selected' : '';
                         $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
                     });
+                    if (shouldSave && selectedModel) {
+                        $.post(aiAssistantAjaxUrl, {
+                            action: 'ai_assistant_save_model',
+                            model: selectedModel,
+                            _wpnonce: aiAssistantSettingsNonce
+                        });
+                    }
                 } else {
                     $select.html('<option value="">No models found - check if server is running</option>');
                 }
@@ -791,7 +961,7 @@ class Settings {
                             'anthropic-dangerous-direct-browser-access': 'true'
                         },
                         body: JSON.stringify({
-                            model: 'claude-3-5-haiku-20241022',
+                            model: 'claude-3-haiku-20240307',
                             max_tokens: 1,
                             messages: [{role: 'user', content: 'hi'}]
                         })
@@ -905,6 +1075,19 @@ class Settings {
             // Refresh models button
             $('#ai-refresh-models').on('click', function() {
                 loadModels($('#ai_assistant_provider').val());
+            });
+
+            // Reload models when API key changes
+            $('#ai_assistant_anthropic_api_key').on('change', function() {
+                if ($('#ai_assistant_provider').val() === 'anthropic') {
+                    loadModels('anthropic');
+                }
+            });
+
+            $('#ai_assistant_openai_api_key').on('change', function() {
+                if ($('#ai_assistant_provider').val() === 'openai') {
+                    loadModels('openai');
+                }
             });
 
             // Initial load
