@@ -56,7 +56,24 @@
 
 .ai-assistant-header-actions {
     display: flex;
-    gap: 6px;
+    align-items: center;
+    gap: 8px;
+}
+
+.ai-header-link {
+    color: #2271b1;
+    text-decoration: none;
+    font-size: 13px;
+}
+
+.ai-header-link:hover {
+    color: #135e96;
+    text-decoration: underline;
+}
+
+.ai-header-sep {
+    color: #c3c4c7;
+    font-size: 12px;
 }
 
 /* Messages container */
@@ -283,6 +300,108 @@
 .ai-action-desc {
     font-size: 11px;
     color: #50575e;
+}
+
+.ai-action-preview {
+    margin-top: 8px;
+}
+
+.ai-action-preview-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #2271b1;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+.ai-action-preview-toggle:hover {
+    text-decoration: underline;
+}
+
+.ai-action-preview-toggle .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    transition: transform 0.2s;
+}
+
+.ai-action-preview.expanded .ai-action-preview-toggle .dashicons {
+    transform: rotate(90deg);
+}
+
+.ai-action-preview-content {
+    display: none;
+    margin-top: 6px;
+    max-height: 250px;
+    overflow: auto;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    background: #f6f7f7;
+}
+
+.ai-action-preview.expanded .ai-action-preview-content {
+    display: block;
+    max-height: 350px;
+}
+
+/* When preview is expanded, make the action container stack vertically */
+.ai-pending-action:has(.ai-action-preview.expanded) {
+    flex-wrap: wrap;
+}
+
+.ai-pending-action:has(.ai-action-preview.expanded) .ai-action-info {
+    flex: 1 1 100%;
+}
+
+.ai-pending-action:has(.ai-action-preview.expanded) .ai-action-buttons {
+    margin-left: auto;
+    margin-top: 8px;
+}
+
+.ai-action-preview pre {
+    background: transparent;
+    color: #1d2327;
+    padding: 10px;
+    margin: 0;
+    font-size: 11px;
+    white-space: normal;
+    font-family: Consolas, Monaco, monospace;
+}
+
+/* Diff styling */
+.ai-diff-line {
+    display: block;
+    padding: 1px 6px;
+    margin: 0 -10px;
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre;
+}
+
+.ai-diff-add {
+    background: #d4edda;
+    color: #155724;
+}
+
+.ai-diff-remove {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.ai-diff-context {
+    color: #787c82;
+    background: #f6f7f7;
+}
+
+.ai-diff-header {
+    color: #2271b1;
+    font-weight: 600;
+    background: #f0f6fc;
+    margin-top: 4px;
 }
 
 .ai-action-buttons {

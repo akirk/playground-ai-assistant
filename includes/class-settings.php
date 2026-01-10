@@ -60,13 +60,279 @@ class Settings {
      * Add settings page to admin menu
      */
     public function add_settings_page() {
+        // Add to Tools menu
+        add_management_page(
+            __('AI Assistant', 'ai-assistant'),
+            __('AI Assistant', 'ai-assistant'),
+            'edit_posts',
+            'ai-assistant',
+            [$this, 'render_chat_page']
+        );
+
+        // Settings under Settings menu
         add_options_page(
-            __('Playground AI Assistant Settings', 'ai-assistant'),
-            __('Playground AI Assistant', 'ai-assistant'),
+            __('AI Assistant Settings', 'ai-assistant'),
+            __('AI Assistant', 'ai-assistant'),
             'manage_options',
             'ai-assistant-settings',
             [$this, 'render_settings_page']
         );
+    }
+
+    /**
+     * Render the dedicated chat page
+     */
+    public function render_chat_page() {
+        $conversation_id = isset($_GET['conversation']) ? intval($_GET['conversation']) : 0;
+        $settings_url = admin_url('options-general.php?page=ai-assistant-settings');
+        ?>
+        <div class="wrap ai-assistant-page">
+            <div class="ai-chat-layout">
+                <!-- Sidebar -->
+                <div class="ai-chat-sidebar">
+                    <div class="ai-sidebar-header">
+                        <button type="button" id="ai-assistant-new-chat" class="button button-primary">
+                            + <?php esc_html_e('New Chat', 'ai-assistant'); ?>
+                        </button>
+                    </div>
+                    <div class="ai-sidebar-conversations" id="ai-sidebar-conversations">
+                        <div class="ai-sidebar-loading"><?php esc_html_e('Loading...', 'ai-assistant'); ?></div>
+                    </div>
+                    <div class="ai-sidebar-footer">
+                        <a href="<?php echo esc_url($settings_url); ?>" class="ai-sidebar-link">
+                            <span class="dashicons dashicons-admin-settings"></span>
+                            <?php esc_html_e('Settings', 'ai-assistant'); ?>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Main Chat Area -->
+                <div class="ai-chat-main">
+                    <div class="ai-assistant-chat-container">
+                        <div id="ai-assistant-messages"></div>
+                        <div id="ai-assistant-loading" style="display: none;">
+                            <div class="ai-loading-dots"><span></span><span></span><span></span></div>
+                        </div>
+                        <div id="ai-assistant-pending-actions"></div>
+                        <div class="ai-assistant-input-area">
+                            <textarea id="ai-assistant-input" placeholder="<?php esc_attr_e('Ask me anything about your WordPress site...', 'ai-assistant'); ?>" rows="3"></textarea>
+                            <button type="button" id="ai-assistant-send" class="button button-primary"><?php esc_html_e('Send', 'ai-assistant'); ?></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            var aiAssistantPageConfig = {
+                conversationId: <?php echo intval($conversation_id); ?>,
+                isFullPage: true
+            };
+        </script>
+        <style>
+            .ai-assistant-page {
+                margin-right: 20px;
+            }
+            .ai-chat-layout {
+                display: flex;
+                height: calc(100vh - 80px);
+                min-height: 500px;
+                background: #fff;
+                border: 1px solid #c3c4c7;
+                border-radius: 4px;
+                overflow: hidden;
+            }
+
+            /* Sidebar */
+            .ai-chat-sidebar {
+                width: 260px;
+                min-width: 260px;
+                background: #f6f7f7;
+                border-right: 1px solid #c3c4c7;
+                display: flex;
+                flex-direction: column;
+            }
+            .ai-sidebar-header {
+                padding: 15px;
+                border-bottom: 1px solid #c3c4c7;
+            }
+            .ai-sidebar-header .button {
+                width: 100%;
+                justify-content: center;
+            }
+            .ai-sidebar-conversations {
+                flex: 1;
+                overflow-y: auto;
+                padding: 10px;
+            }
+            .ai-sidebar-loading {
+                padding: 20px;
+                text-align: center;
+                color: #646970;
+            }
+            .ai-sidebar-footer {
+                padding: 10px 15px;
+                border-top: 1px solid #c3c4c7;
+            }
+            .ai-sidebar-link {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                color: #646970;
+                text-decoration: none;
+                font-size: 13px;
+            }
+            .ai-sidebar-link:hover {
+                color: #2271b1;
+            }
+
+            /* Conversation items in sidebar */
+            .ai-conv-item {
+                padding: 10px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                margin-bottom: 4px;
+                transition: background 0.15s;
+                position: relative;
+            }
+            .ai-conv-item:hover {
+                background: #e0e0e0;
+            }
+            .ai-conv-item.active {
+                background: #2271b1;
+                color: #fff;
+            }
+            .ai-conv-item-title {
+                font-size: 13px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                padding-right: 20px;
+            }
+            .ai-conv-item-date {
+                font-size: 11px;
+                color: #888;
+                margin-top: 2px;
+            }
+            .ai-conv-item.active .ai-conv-item-date {
+                color: rgba(255,255,255,0.7);
+            }
+            .ai-conv-item-delete {
+                position: absolute;
+                right: 8px;
+                top: 50%;
+                transform: translateY(-50%);
+                background: none;
+                border: none;
+                color: #888;
+                cursor: pointer;
+                opacity: 0;
+                padding: 4px;
+                line-height: 1;
+            }
+            .ai-conv-item:hover .ai-conv-item-delete {
+                opacity: 1;
+            }
+            .ai-conv-item.active .ai-conv-item-delete {
+                color: rgba(255,255,255,0.7);
+            }
+            .ai-conv-item-delete:hover {
+                color: #d63638 !important;
+            }
+
+            /* Main chat area */
+            .ai-chat-main {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                min-width: 0;
+            }
+            .ai-chat-main .ai-assistant-chat-container {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+            }
+            .ai-chat-main #ai-assistant-messages {
+                flex: 1;
+                overflow-y: auto;
+                padding: 20px;
+            }
+            .ai-chat-main .ai-assistant-input-area {
+                padding: 15px 20px;
+                border-top: 1px solid #c3c4c7;
+                display: flex;
+                gap: 10px;
+                background: #fff;
+            }
+            .ai-chat-main #ai-assistant-input {
+                flex: 1;
+                resize: none;
+                min-height: 60px;
+            }
+
+            /* Date grouping */
+            .ai-conv-date-group {
+                font-size: 11px;
+                font-weight: 600;
+                color: #646970;
+                padding: 8px 12px 4px;
+                text-transform: uppercase;
+            }
+
+            .ai-sidebar-empty {
+                padding: 20px;
+                text-align: center;
+                color: #646970;
+                font-size: 13px;
+            }
+
+            /* Messages styling */
+            .ai-message {
+                margin-bottom: 15px;
+                padding: 12px 15px;
+                border-radius: 8px;
+                max-width: 85%;
+            }
+            .ai-message-user {
+                background: #2271b1;
+                color: #fff;
+                margin-left: auto;
+                padding: 0;
+            }
+            .ai-message-assistant {
+                background: #f0f0f1;
+            }
+            .ai-message-system {
+                background: #fff8e5;
+                font-size: 13px;
+                max-width: 100%;
+                text-align: center;
+            }
+            .ai-message-error {
+                background: #fcf0f1;
+                color: #8a0f0f;
+                max-width: 100%;
+            }
+            .ai-message pre {
+                background: #263238;
+                color: #aed581;
+                padding: 12px;
+                border-radius: 4px;
+                overflow-x: auto;
+                margin: 8px 0;
+            }
+            .ai-message code {
+                background: rgba(0,0,0,0.1);
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 13px;
+            }
+            .ai-message-user code {
+                background: rgba(255,255,255,0.2);
+            }
+        </style>
+        <?php
     }
 
     /**

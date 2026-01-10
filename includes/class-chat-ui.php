@@ -87,6 +87,12 @@ class Chat_UI {
         if (!is_admin() || !$this->user_has_access()) {
             return;
         }
+
+        // Don't render on the dedicated AI Assistant page (it has its own UI)
+        $screen = get_current_screen();
+        if ($screen && $screen->id === 'tools_page_ai-assistant') {
+            return;
+        }
         ?>
         <script>
         jQuery(document).ready(function($) {
@@ -161,10 +167,12 @@ class Chat_UI {
     private function get_panel_html() {
         $title = esc_html__('Playground AI Assistant', 'ai-assistant');
         $new_chat = esc_html__('New Chat', 'ai-assistant');
+        $history = esc_html__('History', 'ai-assistant');
         $settings = esc_html__('Settings', 'ai-assistant');
         $send = esc_html__('Send', 'ai-assistant');
         $placeholder = esc_attr__('Ask me anything about your WordPress site...', 'ai-assistant');
         $aria_label = esc_attr__('AI Assistant Tab', 'ai-assistant');
+        $history_url = esc_url(admin_url('tools.php?page=ai-assistant'));
         $settings_url = esc_url(admin_url('options-general.php?page=ai-assistant-settings'));
 
         return '<div id="ai-assistant-wrap" class="hidden" tabindex="-1" aria-label="' . $aria_label . '">
@@ -173,9 +181,11 @@ class Chat_UI {
                     <div class="ai-assistant-header">
                         <h2>' . $title . '</h2>
                         <div class="ai-assistant-header-actions">
-                            <button type="button" id="ai-assistant-new-chat" class="button">' . $new_chat . '</button>
-                            <a href="' . $settings_url . '" class="button">' . $settings . '</a>
-                            <button type="button" id="ai-assistant-expand" class="button" title="Expand">&#10530;</button>
+                            <a href="#" id="ai-assistant-new-chat" class="ai-header-link">' . $new_chat . '</a>
+                            <span class="ai-header-sep">|</span>
+                            <a href="' . $history_url . '" class="ai-header-link">' . $history . '</a>
+                            <span class="ai-header-sep">|</span>
+                            <a href="' . $settings_url . '" class="ai-header-link">' . $settings . '</a>
                         </div>
                     </div>
                     <div id="ai-assistant-messages"></div>

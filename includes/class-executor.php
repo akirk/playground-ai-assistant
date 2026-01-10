@@ -45,6 +45,8 @@ class Executor {
                 return $this->read_file($arguments['path']);
             case 'write_file':
                 return $this->write_file($arguments['path'], $arguments['content']);
+            case 'edit_file':
+                return $this->edit_file($arguments['path'], $arguments['edits']);
             case 'append_file':
                 return $this->append_file($arguments['path'], $arguments['content']);
             case 'delete_file':
@@ -185,11 +187,77 @@ class Executor {
             throw new \Exception("Failed to write file: $path");
         }
 
+        // Track if this is a plugin modification
+        $this->track_plugin_modification($path);
+
         return [
             'path' => $path,
             'action' => $existed ? 'updated' : 'created',
             'size' => strlen($content),
             'previous_size' => $old_content !== null ? strlen($old_content) : null,
+        ];
+    }
+
+    private function edit_file(string $path, array $edits): array {
+        $full_path = $this->resolve_path($path);
+
+        if (!file_exists($full_path)) {
+            throw new \Exception("File not found: $path");
+        }
+
+        $content = file_get_contents($full_path);
+        if ($content === false) {
+            throw new \Exception("Failed to read file: $path");
+        }
+
+        $original_content = $content;
+        $applied = [];
+        $failed = [];
+
+        foreach ($edits as $index => $edit) {
+            $search = $edit['search'] ?? '';
+            $replace = $edit['replace'] ?? '';
+
+            if (empty($search)) {
+                $failed[] = ['index' => $index, 'reason' => 'Empty search string'];
+                continue;
+            }
+
+            // Count occurrences
+            $count = substr_count($content, $search);
+
+            if ($count === 0) {
+                $failed[] = ['index' => $index, 'reason' => 'Search string not found', 'search' => substr($search, 0, 50)];
+                continue;
+            }
+
+            if ($count > 1) {
+                $failed[] = ['index' => $index, 'reason' => "Search string found $count times (must be unique)", 'search' => substr($search, 0, 50)];
+                continue;
+            }
+
+            // Apply the edit
+            $content = str_replace($search, $replace, $content);
+            $applied[] = ['index' => $index, 'search_length' => strlen($search), 'replace_length' => strlen($replace)];
+        }
+
+        // Only write if at least one edit was applied
+        if (count($applied) > 0) {
+            if (file_put_contents($full_path, $content) === false) {
+                throw new \Exception("Failed to write file: $path");
+            }
+            // Track if this is a plugin modification
+            $this->track_plugin_modification($path);
+        }
+
+        return [
+            'path' => $path,
+            'edits_applied' => count($applied),
+            'edits_failed' => count($failed),
+            'applied' => $applied,
+            'failed' => $failed,
+            'original_size' => strlen($original_content),
+            'new_size' => strlen($content),
         ];
     }
 
@@ -594,5 +662,31 @@ class Executor {
             'action' => 'switched',
             'previous_theme' => $old_theme,
         ];
+    }
+
+    /**
+     * Track plugin modifications for download functionality
+     */
+    private function track_plugin_modification(string $path): void {
+        // Check if path is within plugins directory
+        if (strpos($path, 'plugins/') !== 0) {
+            return;
+        }
+
+        // Extract plugin folder name (e.g., "plugins/my-plugin/file.php" -> "my-plugin")
+        $parts = explode('/', $path);
+        if (count($parts) < 2) {
+            return;
+        }
+        $plugin_folder = $parts[1];
+
+        // Get current tracked plugins
+        $tracked = get_option('ai_assistant_modified_plugins', []);
+
+        // Add this plugin if not already tracked
+        if (!in_array($plugin_folder, $tracked)) {
+            $tracked[] = $plugin_folder;
+            update_option('ai_assistant_modified_plugins', $tracked);
+        }
     }
 }

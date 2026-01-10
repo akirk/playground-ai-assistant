@@ -60,6 +60,8 @@ final class AI_Assistant {
     private $api_handler;
     private $tools;
     private $executor;
+    private $conversations;
+    private $plugin_downloads;
 
     public static function instance() {
         if (is_null(self::$instance)) {
@@ -86,8 +88,17 @@ final class AI_Assistant {
         $this->settings = new AI_Assistant\Settings();
         $this->tools = new AI_Assistant\Tools();
         $this->executor = new AI_Assistant\Executor($this->tools);
+        $this->conversations = new AI_Assistant\Conversations();
         $this->chat_ui = new AI_Assistant\Chat_UI();
         $this->api_handler = new AI_Assistant\API_Handler($this->get_provider(), $this->tools, $this->executor);
+        $this->plugin_downloads = new AI_Assistant\Plugin_Downloads();
+    }
+
+    /**
+     * Get conversations instance
+     */
+    public function conversations() {
+        return $this->conversations;
     }
 
     /**

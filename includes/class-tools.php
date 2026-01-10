@@ -45,6 +45,7 @@ class Tools {
         return [
             $this->tool_read_file(),
             $this->tool_write_file(),
+            $this->tool_edit_file(),
             $this->tool_append_file(),
             $this->tool_delete_file(),
             $this->tool_list_directory(),
@@ -104,7 +105,7 @@ class Tools {
     private function tool_write_file(): array {
         return [
             'name' => 'write_file',
-            'description' => 'Write or overwrite a file within wp-content directory. Use this to create new files or replace existing ones.',
+            'description' => 'Write or overwrite a file within wp-content directory. Use this only for creating NEW files. For modifying existing files, use edit_file instead.',
             'parameters' => [
                 'type' => 'object',
                 'properties' => [
@@ -118,6 +119,41 @@ class Tools {
                     ],
                 ],
                 'required' => ['path', 'content'],
+            ],
+        ];
+    }
+
+    private function tool_edit_file(): array {
+        return [
+            'name' => 'edit_file',
+            'description' => 'Edit an existing file by applying search and replace operations. More efficient than write_file for making targeted changes. Each edit finds a unique string and replaces it.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'path' => [
+                        'type' => 'string',
+                        'description' => 'Relative path from wp-content (e.g., "plugins/my-plugin/file.php")',
+                    ],
+                    'edits' => [
+                        'type' => 'array',
+                        'description' => 'Array of edit operations to apply in order',
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'search' => [
+                                    'type' => 'string',
+                                    'description' => 'The exact string to find (must be unique in the file)',
+                                ],
+                                'replace' => [
+                                    'type' => 'string',
+                                    'description' => 'The string to replace it with',
+                                ],
+                            ],
+                            'required' => ['search', 'replace'],
+                        ],
+                    ],
+                ],
+                'required' => ['path', 'edits'],
             ],
         ];
     }
