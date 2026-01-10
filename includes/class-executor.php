@@ -28,7 +28,7 @@ class Executor {
      */
     public function execute_tool(string $tool_name, array $arguments, string $permission = 'full') {
         // Validate permission
-        $read_only_tools = ['read_file', 'list_directory', 'file_exists', 'search_files', 'search_content', 'db_query', 'get_option', 'get_plugins', 'get_themes'];
+        $read_only_tools = ['read_file', 'list_directory', 'file_exists', 'search_files', 'search_content', 'db_query', 'get_plugins', 'get_themes'];
 
         if ($permission === 'read_only' && !in_array($tool_name, $read_only_tools)) {
             throw new \Exception("Tool '$tool_name' requires full access permission");
@@ -75,10 +75,6 @@ class Executor {
                 return $this->db_update($arguments['table'], $arguments['data'], $arguments['where']);
             case 'db_delete':
                 return $this->db_delete($arguments['table'], $arguments['where']);
-            case 'get_option':
-                return $this->get_wp_option($arguments['name']);
-            case 'update_option':
-                return $this->update_wp_option($arguments['name'], $arguments['value']);
 
             // WordPress operations
             case 'get_plugins':
@@ -91,6 +87,8 @@ class Executor {
                 return $this->get_themes();
             case 'switch_theme':
                 return $this->switch_theme($arguments['theme']);
+            case 'run_php':
+                return $this->run_php($arguments['code']);
 
             default:
                 throw new \Exception("Unknown tool: $tool_name");
@@ -542,29 +540,6 @@ class Executor {
         ];
     }
 
-    private function get_wp_option(string $name): array {
-        $value = get_option($name, null);
-
-        return [
-            'name' => $name,
-            'value' => $value,
-            'exists' => $value !== null,
-        ];
-    }
-
-    private function update_wp_option(string $name, $value): array {
-        $old_value = get_option($name);
-        $result = update_option($name, $value);
-
-        return [
-            'name' => $name,
-            'action' => 'updated',
-            'old_value' => $old_value,
-            'new_value' => $value,
-            'changed' => $result,
-        ];
-    }
-
     // ===== WORDPRESS OPERATIONS =====
 
     private function get_plugins(): array {
@@ -661,6 +636,29 @@ class Executor {
             'theme' => $theme,
             'action' => 'switched',
             'previous_theme' => $old_theme,
+        ];
+    }
+
+    private function run_php(string $code): array {
+        ob_start();
+        $error = null;
+        $result = null;
+
+        try {
+            $result = eval($code);
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        $output = ob_get_clean();
+
+        if ($error !== null) {
+            throw new \Exception("PHP error: $error");
+        }
+
+        return [
+            'result' => $result,
+            'output' => $output,
         ];
     }
 

@@ -145,12 +145,23 @@
                 }
             });
 
-            // Sidebar conversation click
+            // Sidebar conversation click (delayed to allow double-click for rename)
             $(document).on('click', '.ai-conv-item', function(e) {
                 if ($(e.target).hasClass('ai-conv-item-delete')) return;
                 if ($(e.target).hasClass('ai-conv-rename-input')) return;
-                var id = $(this).data('id');
-                self.loadConversation(id);
+                var $item = $(this);
+                var id = $item.data('id');
+
+                // Clear any existing timeout
+                if ($item.data('clickTimeout')) {
+                    clearTimeout($item.data('clickTimeout'));
+                }
+
+                // Delay load to allow double-click detection
+                var timeout = setTimeout(function() {
+                    self.loadConversation(id);
+                }, 250);
+                $item.data('clickTimeout', timeout);
             });
 
             // Preview toggle in pending actions
@@ -166,6 +177,12 @@
                 var $item = $title.closest('.ai-conv-item');
                 var id = $item.data('id');
                 var currentTitle = $title.text();
+
+                // Cancel the pending load
+                if ($item.data('clickTimeout')) {
+                    clearTimeout($item.data('clickTimeout'));
+                    $item.removeData('clickTimeout');
+                }
 
                 // Replace with input
                 var $input = $('<input type="text" class="ai-conv-rename-input">')
@@ -401,29 +418,6 @@ Always explain what you're about to do before using tools.`;
                     }
                 },
                 {
-                    name: 'get_option',
-                    description: 'Get a WordPress option value',
-                    input_schema: {
-                        type: 'object',
-                        properties: {
-                            name: { type: 'string', description: 'The option name' }
-                        },
-                        required: ['name']
-                    }
-                },
-                {
-                    name: 'update_option',
-                    description: 'Update a WordPress option value',
-                    input_schema: {
-                        type: 'object',
-                        properties: {
-                            name: { type: 'string', description: 'The option name' },
-                            value: { type: 'string', description: 'The new value' }
-                        },
-                        required: ['name', 'value']
-                    }
-                },
-                {
                     name: 'get_plugins',
                     description: 'List all installed WordPress plugins with their status',
                     input_schema: { type: 'object', properties: {} }
@@ -464,6 +458,17 @@ Always explain what you're about to do before using tools.`;
                             theme: { type: 'string', description: 'Theme slug (directory name)' }
                         },
                         required: ['theme']
+                    }
+                },
+                {
+                    name: 'run_php',
+                    description: 'Execute PHP code in the WordPress environment. Use this to call WordPress functions like wp_insert_post(), wp_update_post(), get_option(), update_option(), WP_Query, etc. The code runs with full WordPress context available.',
+                    input_schema: {
+                        type: 'object',
+                        properties: {
+                            code: { type: 'string', description: 'PHP code to execute. Do not include <?php tags. The code should return a value that will be sent back as the result.' }
+                        },
+                        required: ['code']
                     }
                 }
             ];
@@ -733,7 +738,7 @@ Always explain what you're about to do before using tools.`;
 
         processToolCalls: function(toolCalls, provider) {
             var self = this;
-            var destructiveTools = ['write_file', 'edit_file', 'delete_file', 'create_directory', 'db_insert', 'db_update', 'db_delete', 'update_option', 'activate_plugin', 'deactivate_plugin', 'switch_theme'];
+            var destructiveTools = ['write_file', 'edit_file', 'delete_file', 'create_directory', 'db_insert', 'db_update', 'db_delete', 'activate_plugin', 'deactivate_plugin', 'switch_theme', 'run_php'];
 
             var needsConfirmation = [];
             var executeImmediately = [];
@@ -967,8 +972,8 @@ Always explain what you're about to do before using tools.`;
                     return 'Update rows in table: ' + (args.table || 'unknown');
                 case 'db_delete':
                     return 'Delete rows from table: ' + (args.table || 'unknown');
-                case 'update_option':
-                    return 'Update option: ' + (args.name || 'unknown');
+                case 'run_php':
+                    return 'Run PHP code';
                 case 'activate_plugin':
                     return 'Activate plugin: ' + (args.plugin || 'unknown');
                 case 'deactivate_plugin':
@@ -1146,9 +1151,9 @@ Always explain what you're about to do before using tools.`;
                         content = JSON.stringify(args.data, null, 2);
                     }
                     break;
-                case 'update_option':
-                    if (args.value !== undefined) {
-                        content = 'Value: ' + (typeof args.value === 'object' ? JSON.stringify(args.value, null, 2) : args.value);
+                case 'run_php':
+                    if (args.code) {
+                        content = args.code;
                     }
                     break;
             }

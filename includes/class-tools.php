@@ -32,7 +32,6 @@ class Tools {
             $this->tool_search_files(),
             $this->tool_search_content(),
             $this->tool_db_query(),
-            $this->tool_get_option(),
             $this->tool_get_plugins(),
             $this->tool_get_themes(),
         ];
@@ -65,8 +64,6 @@ class Tools {
             $this->tool_db_insert(),
             $this->tool_db_update(),
             $this->tool_db_delete(),
-            $this->tool_get_option(),
-            $this->tool_update_option(),
         ];
     }
 
@@ -80,6 +77,7 @@ class Tools {
             $this->tool_deactivate_plugin(),
             $this->tool_get_themes(),
             $this->tool_switch_theme(),
+            $this->tool_run_php(),
         ];
     }
 
@@ -375,44 +373,6 @@ class Tools {
         ];
     }
 
-    private function tool_get_option(): array {
-        return [
-            'name' => 'get_option',
-            'description' => 'Get a WordPress option value',
-            'parameters' => [
-                'type' => 'object',
-                'properties' => [
-                    'name' => [
-                        'type' => 'string',
-                        'description' => 'The option name (e.g., "blogname", "siteurl")',
-                    ],
-                ],
-                'required' => ['name'],
-            ],
-        ];
-    }
-
-    private function tool_update_option(): array {
-        return [
-            'name' => 'update_option',
-            'description' => 'Update a WordPress option value',
-            'parameters' => [
-                'type' => 'object',
-                'properties' => [
-                    'name' => [
-                        'type' => 'string',
-                        'description' => 'The option name',
-                    ],
-                    'value' => [
-                        'type' => 'string',
-                        'description' => 'The new value for the option',
-                    ],
-                ],
-                'required' => ['name', 'value'],
-            ],
-        ];
-    }
-
     // ===== WORDPRESS TOOLS =====
 
     private function tool_get_plugins(): array {
@@ -484,6 +444,23 @@ class Tools {
                     ],
                 ],
                 'required' => ['theme'],
+            ],
+        ];
+    }
+
+    private function tool_run_php(): array {
+        return [
+            'name' => 'run_php',
+            'description' => 'Execute PHP code in the WordPress environment. Use this to call WordPress functions like wp_insert_post(), wp_update_post(), get_option(), update_option(), WP_Query, etc. The code runs with full WordPress context available.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'code' => [
+                        'type' => 'string',
+                        'description' => 'PHP code to execute. Do not include <?php tags. The code should return a value that will be sent back as the result.',
+                    ],
+                ],
+                'required' => ['code'],
             ],
         ];
     }
