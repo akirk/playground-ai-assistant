@@ -16,6 +16,23 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+/**
+ * Safety check: Only run in WordPress Playground environment
+ */
+function ai_assistant_is_playground(): bool {
+    $is_wasm = isset($_SERVER['SERVER_SOFTWARE']) && strpos($_SERVER['SERVER_SOFTWARE'], 'PHP.wasm') !== false;
+    $is_playground_path = strpos(ABSPATH, '/wordpress') !== false;
+
+    return $is_wasm && $is_playground_path;
+}
+
+if (!ai_assistant_is_playground()) {
+    add_action('admin_notices', function() {
+        echo '<div class="notice notice-error"><p><strong>Playground AI Assistant</strong> only runs in WordPress Playground environments.</p></div>';
+    });
+    return;
+}
+
 define('AI_ASSISTANT_VERSION', '1.0.0');
 define('AI_ASSISTANT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AI_ASSISTANT_PLUGIN_URL', plugin_dir_url(__FILE__));
