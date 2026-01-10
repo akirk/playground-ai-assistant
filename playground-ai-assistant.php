@@ -2,9 +2,9 @@
 /**
  * Plugin Name: Playground AI Assistant
  * Plugin URI: https://github.com/example/playground-ai-assistant
- * Description: AI-powered chat interface for WordPress Playground - modify your site using Claude, ChatGPT, or local LLMs
+ * Description: AI-powered chat interface for WordPress Playground to modify it to your liking. Bring your own key or use a local LLM
  * Version: 1.0.0
- * Author: Playground AI Assistant
+ * Author: Alex Kirk
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: ai-assistant
@@ -22,8 +22,9 @@ if (!defined('ABSPATH')) {
 function ai_assistant_is_playground(): bool {
     $is_wasm = isset($_SERVER['SERVER_SOFTWARE']) && strpos($_SERVER['SERVER_SOFTWARE'], 'PHP.wasm') !== false;
     $is_playground_path = strpos(ABSPATH, '/wordpress') !== false;
+    $has_playground_function = function_exists('post_message_to_js');
 
-    return $is_wasm && $is_playground_path;
+    return $is_wasm && $is_playground_path && $has_playground_function;
 }
 
 if (!ai_assistant_is_playground()) {
