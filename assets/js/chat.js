@@ -305,7 +305,15 @@ Current WordPress Information:
 
 You have access to tools that let you interact with the WordPress filesystem and database. All file paths are relative to wp-content/.
 
-IMPORTANT FILE EDITING RULES:
+WORDPRESS ABILITIES API:
+For common WordPress operations (posts, options, queries, users), use run_php with standard WordPress functions.
+Use the Abilities API (list_abilities, get_ability, execute_ability) when:
+- The task involves plugin-specific functionality (e.g., WooCommerce, forms, SEO plugins)
+- The user asks about what actions are available
+- You're unsure how to accomplish something with standard WordPress functions
+Abilities expose plugin/theme capabilities in a standardized way.
+
+FILE EDITING RULES:
 - Use write_file ONLY for creating NEW files
 - Use edit_file for modifying EXISTING files - it uses search/replace operations which is more efficient and easier to review
 - The edit_file tool takes an array of {search, replace} pairs - each search string must be unique in the file
@@ -433,13 +441,46 @@ Always explain what you're about to do before using tools.`;
                 },
                 {
                     name: 'run_php',
-                    description: 'Execute PHP code in the WordPress environment. Use this to call WordPress functions like wp_insert_post(), wp_update_post(), get_option(), update_option(), WP_Query, etc. The code runs with full WordPress context available.',
+                    description: 'Execute PHP code in the WordPress environment. Use for standard WordPress functions like wp_insert_post(), get_option(), WP_Query, etc.',
                     input_schema: {
                         type: 'object',
                         properties: {
                             code: { type: 'string', description: 'PHP code to execute. Do not include <?php tags. The code should return a value that will be sent back as the result.' }
                         },
                         required: ['code']
+                    }
+                },
+                {
+                    name: 'list_abilities',
+                    description: 'List all available WordPress abilities from plugins, themes, and core. Returns ability names and brief descriptions. Use this first to discover what actions are available.',
+                    input_schema: {
+                        type: 'object',
+                        properties: {
+                            category: { type: 'string', description: 'Optional category filter (e.g., "content", "media", "users")' }
+                        }
+                    }
+                },
+                {
+                    name: 'get_ability',
+                    description: 'Get full details of a specific WordPress ability including its parameters, permissions, and usage. Call this before execute_ability to understand required arguments.',
+                    input_schema: {
+                        type: 'object',
+                        properties: {
+                            ability: { type: 'string', description: 'The ability identifier (e.g., "core/create-post")' }
+                        },
+                        required: ['ability']
+                    }
+                },
+                {
+                    name: 'execute_ability',
+                    description: 'Execute a WordPress ability with the given arguments. Use get_ability first to understand required parameters.',
+                    input_schema: {
+                        type: 'object',
+                        properties: {
+                            ability: { type: 'string', description: 'The ability identifier to execute' },
+                            arguments: { type: 'object', description: 'Arguments to pass to the ability' }
+                        },
+                        required: ['ability']
                     }
                 }
             ];
@@ -2004,6 +2045,7 @@ Always explain what you're about to do before using tools.`;
                 // Generate title if this is a new conversation
                 if (!this.conversationTitle && this.messages.length >= 2) {
                     this.generateConversationTitle();
+                    return; // generateConversationTitle will save after title is generated
                 }
                 this.saveConversation(true);
             }

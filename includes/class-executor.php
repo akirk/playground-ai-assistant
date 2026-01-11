@@ -28,7 +28,7 @@ class Executor {
      */
     public function execute_tool(string $tool_name, array $arguments, string $permission = 'full') {
         // Validate permission
-        $read_only_tools = ['read_file', 'list_directory', 'search_files', 'search_content', 'db_query', 'get_plugins', 'get_themes'];
+        $read_only_tools = ['read_file', 'list_directory', 'search_files', 'search_content', 'db_query', 'get_plugins', 'get_themes', 'list_abilities', 'get_ability'];
 
         if ($permission === 'read_only' && !in_array($tool_name, $read_only_tools)) {
             throw new \Exception("Tool '$tool_name' requires full access permission");
@@ -75,6 +75,16 @@ class Executor {
                 return $this->get_themes();
             case 'run_php':
                 return $this->run_php($this->get_string_arg($arguments, 'code', $tool_name));
+
+            // Abilities API operations
+            case 'list_abilities':
+                return $this->list_abilities($this->get_string_arg($arguments, 'category', $tool_name, ''));
+            case 'get_ability':
+                return $this->get_ability($this->get_string_arg($arguments, 'ability', $tool_name));
+            case 'execute_ability':
+                $ability = $this->get_string_arg($arguments, 'ability', $tool_name);
+                $ability_args = $arguments['arguments'] ?? [];
+                return $this->execute_ability($ability, $ability_args);
 
             default:
                 throw new \Exception("Unknown tool: $tool_name");
@@ -561,5 +571,87 @@ class Executor {
             $tracked[] = $plugin_folder;
             update_option('ai_assistant_modified_plugins', $tracked);
         }
+    }
+
+    // ===== ABILITIES API OPERATIONS =====
+
+    private function list_abilities(string $category = ''): array {
+        if (!function_exists('wp_get_abilities')) {
+            return [
+                'error' => 'Abilities API not available',
+                'message' => 'WordPress 6.9+ with the Abilities API is required',
+                'abilities' => [],
+            ];
+        }
+
+        $abilities = wp_get_abilities();
+
+        if (!empty($category)) {
+            $abilities = array_filter($abilities, function($ability) use ($category) {
+                return isset($ability['category']) && $ability['category'] === $category;
+            });
+        }
+
+        $result = [];
+        foreach ($abilities as $id => $ability) {
+            $result[] = [
+                'id' => $id,
+                'name' => $ability['name'] ?? $id,
+                'description' => $ability['description'] ?? '',
+                'category' => $ability['category'] ?? 'uncategorized',
+            ];
+        }
+
+        return [
+            'abilities' => $result,
+            'count' => count($result),
+            'filter' => $category ?: null,
+        ];
+    }
+
+    private function get_ability(string $ability_id): array {
+        if (!function_exists('wp_get_ability')) {
+            return [
+                'error' => 'Abilities API not available',
+                'message' => 'WordPress 6.9+ with the Abilities API is required',
+            ];
+        }
+
+        $ability = wp_get_ability($ability_id);
+
+        if ($ability === null) {
+            throw new \Exception("Ability not found: $ability_id");
+        }
+
+        return [
+            'id' => $ability_id,
+            'name' => $ability['name'] ?? $ability_id,
+            'description' => $ability['description'] ?? '',
+            'category' => $ability['category'] ?? 'uncategorized',
+            'parameters' => $ability['parameters'] ?? [],
+            'permissions' => $ability['permissions'] ?? [],
+            'returns' => $ability['returns'] ?? null,
+        ];
+    }
+
+    private function execute_ability(string $ability_id, array $arguments = []): array {
+        if (!function_exists('wp_execute_ability')) {
+            return [
+                'error' => 'Abilities API not available',
+                'message' => 'WordPress 6.9+ with the Abilities API is required',
+            ];
+        }
+
+        $result = wp_execute_ability($ability_id, $arguments);
+
+        if (is_wp_error($result)) {
+            throw new \Exception("Ability execution failed: " . $result->get_error_message());
+        }
+
+        return [
+            'ability' => $ability_id,
+            'success' => true,
+            'result' => $result,
+        ];
     }
 }

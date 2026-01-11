@@ -17,7 +17,8 @@ class Tools {
         return array_merge(
             $this->get_file_tools(),
             $this->get_database_tools(),
-            $this->get_wordpress_tools()
+            $this->get_wordpress_tools(),
+            $this->get_abilities_tools()
         );
     }
 
@@ -33,6 +34,8 @@ class Tools {
             $this->tool_db_query(),
             $this->tool_get_plugins(),
             $this->tool_get_themes(),
+            $this->tool_list_abilities(),
+            $this->tool_get_ability(),
         ];
     }
 
@@ -278,6 +281,70 @@ class Tools {
                     ],
                 ],
                 'required' => ['code'],
+            ],
+        ];
+    }
+
+    // ===== ABILITIES API TOOLS =====
+
+    private function get_abilities_tools(): array {
+        return [
+            $this->tool_list_abilities(),
+            $this->tool_get_ability(),
+            $this->tool_execute_ability(),
+        ];
+    }
+
+    private function tool_list_abilities(): array {
+        return [
+            'name' => 'list_abilities',
+            'description' => 'List all available WordPress abilities (from plugins, themes, and core). Returns ability names and brief descriptions. Use get_ability to fetch full details for a specific ability before executing.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'category' => [
+                        'type' => 'string',
+                        'description' => 'Optional category to filter abilities (e.g., "content", "media", "users")',
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    private function tool_get_ability(): array {
+        return [
+            'name' => 'get_ability',
+            'description' => 'Get full details of a specific WordPress ability including its parameters schema, permissions, and usage information. Call this before execute_ability to understand what arguments are needed.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'ability' => [
+                        'type' => 'string',
+                        'description' => 'The ability identifier (e.g., "core/create-post", "woocommerce/add-to-cart")',
+                    ],
+                ],
+                'required' => ['ability'],
+            ],
+        ];
+    }
+
+    private function tool_execute_ability(): array {
+        return [
+            'name' => 'execute_ability',
+            'description' => 'Execute a WordPress ability with the given arguments. Use get_ability first to understand required parameters.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'ability' => [
+                        'type' => 'string',
+                        'description' => 'The ability identifier to execute',
+                    ],
+                    'arguments' => [
+                        'type' => 'object',
+                        'description' => 'Arguments to pass to the ability (schema varies by ability)',
+                    ],
+                ],
+                'required' => ['ability'],
             ],
         ];
     }
