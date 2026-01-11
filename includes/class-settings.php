@@ -127,9 +127,12 @@ class Settings {
 
                 <!-- Main Chat Area -->
                 <div class="ai-chat-main">
-                    <button type="button" class="ai-sidebar-toggle" id="ai-sidebar-toggle">
-                        <span class="dashicons dashicons-menu"></span> <?php esc_html_e('Chats', 'ai-assistant'); ?>
-                    </button>
+                    <div class="ai-chat-main-header">
+                        <button type="button" class="ai-sidebar-toggle" id="ai-sidebar-toggle">
+                            <span class="dashicons dashicons-menu"></span> <?php esc_html_e('Chats', 'ai-assistant'); ?>
+                        </button>
+                        <label class="ai-yolo-label"><input type="checkbox" id="ai-assistant-yolo"> YOLO</label>
+                    </div>
                     <div class="ai-assistant-chat-container">
                         <div id="ai-assistant-messages"></div>
                         <div id="ai-assistant-loading" style="display: none;">

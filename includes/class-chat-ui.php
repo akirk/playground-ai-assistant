@@ -184,6 +184,8 @@ class Chat_UI {
                     <div class="ai-assistant-header">
                         <h2>' . $title . '</h2>
                         <div class="ai-assistant-header-actions">
+                            <label class="ai-yolo-label"><input type="checkbox" id="ai-assistant-yolo"> YOLO</label>
+                            <span class="ai-header-sep">|</span>
                             <a href="#" id="ai-assistant-new-chat" class="ai-header-link">' . $new_chat . '</a>
                             <span class="ai-header-sep">|</span>
                             <a href="' . $history_url . '" class="ai-header-link">' . $history . '</a>

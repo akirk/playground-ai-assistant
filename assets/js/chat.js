@@ -12,12 +12,15 @@
         isFullPage: false,
         autoSave: true,
         draftStorageKey: 'aiAssistant_draftMessage',
+        yoloStorageKey: 'aiAssistant_yoloMode',
         conversationPreloaded: false,
+        yoloMode: false,
 
         init: function() {
             this.bindEvents();
             this.buildSystemPrompt();
             this.restoreDraft();
+            this.restoreYoloMode();
 
             // Check if we're on the full page and have a conversation to load
             if (typeof aiAssistantPageConfig !== 'undefined') {
@@ -107,6 +110,12 @@
                     self.conversationPreloaded = true;
                     self.loadMostRecentConversation();
                 }
+            });
+
+            // YOLO mode toggle
+            $(document).on('change', '#ai-assistant-yolo', function() {
+                self.yoloMode = $(this).is(':checked');
+                self.saveYoloMode();
             });
 
             // Toggle tool result expansion
@@ -765,6 +774,12 @@ Always explain what you're about to do before using tools.`;
             var self = this;
             var destructiveTools = ['write_file', 'edit_file', 'delete_file', 'create_directory', 'db_insert', 'db_update', 'db_delete', 'activate_plugin', 'deactivate_plugin', 'switch_theme', 'run_php'];
 
+            // YOLO mode: execute everything immediately
+            if (this.yoloMode) {
+                this.executeTools(toolCalls, provider);
+                return;
+            }
+
             var needsConfirmation = [];
             var executeImmediately = [];
 
@@ -1323,6 +1338,24 @@ Always explain what you're about to do before using tools.`;
                 localStorage.removeItem(this.draftStorageKey);
             } catch (e) {
                 console.warn('[AI Assistant] Could not clear draft:', e);
+            }
+        },
+
+        saveYoloMode: function() {
+            try {
+                localStorage.setItem(this.yoloStorageKey, this.yoloMode ? '1' : '0');
+            } catch (e) {
+                console.warn('[AI Assistant] Could not save YOLO mode:', e);
+            }
+        },
+
+        restoreYoloMode: function() {
+            try {
+                var stored = localStorage.getItem(this.yoloStorageKey);
+                this.yoloMode = stored === '1';
+                $('#ai-assistant-yolo').prop('checked', this.yoloMode);
+            } catch (e) {
+                console.warn('[AI Assistant] Could not restore YOLO mode:', e);
             }
         },
 

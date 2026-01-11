@@ -76,6 +76,28 @@
     font-size: 12px;
 }
 
+.ai-yolo-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.ai-yolo-label input {
+    margin: 0;
+}
+
+.ai-chat-main-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    border-bottom: 1px solid #c3c4c7;
+    background: #f6f7f7;
+}
+
 /* Messages container */
 #ai-assistant-messages {
     flex: 1;
