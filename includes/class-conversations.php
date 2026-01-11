@@ -64,8 +64,16 @@ class Conversations {
         );
     }
 
+    private function get_messages($post) {
+        if (empty($post->post_content)) {
+            return [];
+        }
+        $json = base64_decode($post->post_content);
+        return json_decode($json, true) ?: [];
+    }
+
     public function render_messages_meta_box($post) {
-        $messages = get_post_meta($post->ID, '_ai_messages', true);
+        $messages = $this->get_messages($post);
         if (empty($messages)) {
             echo '<p>' . esc_html__('No messages in this conversation.', 'ai-assistant') . '</p>';
             return;
@@ -135,14 +143,15 @@ class Conversations {
     }
 
     public function render_columns($column, $post_id) {
-        $messages = get_post_meta($post_id, '_ai_messages', true);
+        $post = get_post($post_id);
+        $messages = $this->get_messages($post);
 
         switch ($column) {
             case 'message_count':
-                echo is_array($messages) ? count($messages) : 0;
+                echo count($messages);
                 break;
             case 'last_message':
-                if (is_array($messages) && !empty($messages)) {
+                if (!empty($messages)) {
                     $last = end($messages);
                     $content = is_array($last['content']) ? '[Complex content]' : $last['content'];
                     echo esc_html(wp_trim_words($content, 10, '...'));
@@ -159,13 +168,14 @@ class Conversations {
         }
 
         $conversation_id = intval($_POST['conversation_id'] ?? 0);
-        $messages_json = wp_unslash($_POST['messages'] ?? '[]');
-        $messages = json_decode($messages_json, true);
+        $messages_base64 = $_POST['messages'] ?? '';
         $title = sanitize_text_field($_POST['title'] ?? '');
+        $provider = sanitize_text_field($_POST['provider'] ?? '');
+        $model = sanitize_text_field($_POST['model'] ?? '');
 
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            wp_send_json_error(['message' => 'Invalid messages JSON']);
-        }
+        // Decode base64 to get message count for title generation
+        $messages_json = base64_decode($messages_base64);
+        $messages = json_decode($messages_json, true) ?: [];
 
         if (empty($title) && !empty($messages)) {
             $first_user_message = array_filter($messages, function($m) {
@@ -186,6 +196,7 @@ class Conversations {
             'post_status' => 'publish',
             'post_title' => $title,
             'post_author' => get_current_user_id(),
+            'post_content' => $messages_base64,
         ];
 
         if ($conversation_id > 0) {
@@ -201,8 +212,13 @@ class Conversations {
             wp_send_json_error(['message' => $post_id->get_error_message()]);
         }
 
-        update_post_meta($post_id, '_ai_messages', $messages);
         update_post_meta($post_id, '_ai_message_count', count($messages));
+        if ($provider) {
+            update_post_meta($post_id, '_ai_provider', $provider);
+        }
+        if ($model) {
+            update_post_meta($post_id, '_ai_model', $model);
+        }
 
         wp_send_json_success([
             'conversation_id' => $post_id,
@@ -228,12 +244,13 @@ class Conversations {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $messages = get_post_meta($conversation_id, '_ai_messages', true);
-
+        // Send base64 directly - client will decode
         wp_send_json_success([
             'conversation_id' => $conversation_id,
             'title' => $post->post_title,
-            'messages' => $messages ?: [],
+            'messages_base64' => $post->post_content ?: '',
+            'provider' => get_post_meta($conversation_id, '_ai_provider', true) ?: '',
+            'model' => get_post_meta($conversation_id, '_ai_model', true) ?: '',
         ]);
     }
 

@@ -131,7 +131,7 @@ class Settings {
                         <button type="button" class="ai-sidebar-toggle" id="ai-sidebar-toggle">
                             <span class="dashicons dashicons-menu"></span> <?php esc_html_e('Chats', 'ai-assistant'); ?>
                         </button>
-                        <label class="ai-yolo-label"><input type="checkbox" id="ai-assistant-yolo"> YOLO</label>
+                        <label class="ai-yolo-label" title="Skip confirmation prompts for destructive actions"><input type="checkbox" id="ai-assistant-yolo"> YOLO Mode</label>
                     </div>
                     <div class="ai-assistant-chat-container">
                         <div id="ai-assistant-messages"></div>
@@ -1155,6 +1155,21 @@ class Settings {
 
             // Initial load
             loadModels(aiAssistantCurrentProvider);
+
+            // Make permissions section collapsible (collapsed by default)
+            var $permissionsHeading = $('h2:contains("Role Permissions")');
+            if ($permissionsHeading.length) {
+                $permissionsHeading.css('cursor', 'pointer')
+                    .append(' <span class="dashicons dashicons-arrow-down-alt2" style="vertical-align: middle;"></span>');
+                var $permissionsTable = $permissionsHeading.next('table');
+                $permissionsTable.hide();
+
+                $permissionsHeading.on('click', function() {
+                    $permissionsTable.slideToggle(200);
+                    var $icon = $(this).find('.dashicons');
+                    $icon.toggleClass('dashicons-arrow-down-alt2 dashicons-arrow-up-alt2');
+                });
+            }
         });
         </script>
         <?php

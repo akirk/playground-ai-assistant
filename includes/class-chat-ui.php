@@ -58,6 +58,7 @@ class Chat_UI {
             'apiKey' => $api_key,
             'model' => get_option('ai_assistant_model', ''),
             'localEndpoint' => get_option('ai_assistant_local_endpoint', 'http://localhost:11434'),
+            'settingsUrl' => admin_url('options-general.php?page=ai-assistant-settings'),
             'wpInfo' => [
                 'siteUrl' => get_site_url(),
                 'wpVersion' => get_bloginfo('version'),
@@ -149,6 +150,7 @@ class Chat_UI {
                         // Use setTimeout to ensure the browser has completed rendering
                         setTimeout(function() {
                             $('#ai-assistant-input').trigger('focus');
+                            window.aiAssistant.scrollToBottom();
                         }, 50);
                     });
                     $button.attr('aria-expanded', 'true');
@@ -184,7 +186,7 @@ class Chat_UI {
                     <div class="ai-assistant-header">
                         <h2>' . $title . '</h2>
                         <div class="ai-assistant-header-actions">
-                            <label class="ai-yolo-label"><input type="checkbox" id="ai-assistant-yolo"> YOLO</label>
+                            <label class="ai-yolo-label" title="Skip confirmation prompts for destructive actions"><input type="checkbox" id="ai-assistant-yolo"> YOLO Mode</label>
                             <span class="ai-header-sep">|</span>
                             <a href="#" id="ai-assistant-new-chat" class="ai-header-link">' . $new_chat . '</a>
                             <span class="ai-header-sep">|</span>

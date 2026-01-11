@@ -12,15 +12,26 @@
         isFullPage: false,
         autoSave: true,
         draftStorageKey: 'aiAssistant_draftMessage',
+        draftHistoryKey: 'aiAssistant_draftHistory',
         yoloStorageKey: 'aiAssistant_yoloMode',
         conversationPreloaded: false,
         yoloMode: false,
+        conversationProvider: '',
+        conversationModel: '',
+        draftHistory: [],
+        draftHistoryIndex: -1,
+        draftHistoryMax: 50,
 
         init: function() {
             this.bindEvents();
             this.buildSystemPrompt();
             this.restoreDraft();
             this.restoreYoloMode();
+            this.loadDraftHistory();
+
+            // Set default provider/model from settings (will be overwritten if loading a conversation)
+            this.conversationProvider = aiAssistantConfig.provider;
+            this.conversationModel = aiAssistantConfig.model;
 
             // Check if we're on the full page and have a conversation to load
             if (typeof aiAssistantPageConfig !== 'undefined') {
@@ -63,6 +74,21 @@
                 if (e.which === 13 && !e.shiftKey && !e.altKey) {
                     e.preventDefault();
                     self.sendMessage();
+                } else if (e.which === 38 && !e.shiftKey) { // Up arrow
+                    var $input = $(this);
+                    // Only navigate history if cursor is at the start or input is empty
+                    if ($input.val() === '' || $input[0].selectionStart === 0) {
+                        e.preventDefault();
+                        self.navigateDraftHistory(-1);
+                    }
+                } else if (e.which === 40 && !e.shiftKey) { // Down arrow
+                    var $input = $(this);
+                    var val = $input.val();
+                    // Only navigate history if cursor is at the end or input is empty
+                    if (val === '' || $input[0].selectionStart === val.length) {
+                        e.preventDefault();
+                        self.navigateDraftHistory(1);
+                    }
                 }
             });
 
@@ -116,6 +142,9 @@
             $(document).on('change', '#ai-assistant-yolo', function() {
                 self.yoloMode = $(this).is(':checked');
                 self.saveYoloMode();
+                self.addMessage('system', self.yoloMode
+                    ? 'YOLO Mode enabled - destructive actions will execute without confirmation.'
+                    : 'YOLO Mode disabled - destructive actions will require confirmation.');
             });
 
             // Toggle tool result expansion
@@ -529,18 +558,19 @@ Always explain what you're about to do before using tools.`;
 
             if (!message) return;
 
+            this.addToDraftHistory(message);
             this.addMessage('user', message);
             this.messages.push({ role: 'user', content: message });
             $input.val('');
             this.clearDraft();
+            this.draftHistoryIndex = -1;
 
             this.callLLM();
         },
 
         callLLM: function() {
             var self = this;
-            var config = aiAssistantConfig;
-            var provider = config.provider || 'anthropic';
+            var provider = this.conversationProvider || aiAssistantConfig.provider || 'anthropic';
 
             this.setLoading(true);
 
@@ -563,6 +593,7 @@ Always explain what you're about to do before using tools.`;
         callAnthropic: async function() {
             var self = this;
             var config = aiAssistantConfig;
+            var model = this.conversationModel || config.model;
 
             try {
                 var response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -574,7 +605,7 @@ Always explain what you're about to do before using tools.`;
                         'anthropic-dangerous-direct-browser-access': 'true'
                     },
                     body: JSON.stringify({
-                        model: config.model || 'claude-sonnet-4-5-20250929',
+                        model: model,
                         max_tokens: 4096,
                         system: this.systemPrompt,
                         messages: this.messages,
@@ -633,6 +664,7 @@ Always explain what you're about to do before using tools.`;
         callOpenAI: async function() {
             var self = this;
             var config = aiAssistantConfig;
+            var model = this.conversationModel || config.model;
 
             try {
                 var requestMessages = [
@@ -647,7 +679,7 @@ Always explain what you're about to do before using tools.`;
                         'Authorization': 'Bearer ' + config.apiKey
                     },
                     body: JSON.stringify({
-                        model: config.model || 'gpt-4o',
+                        model: model,
                         max_tokens: 4096,
                         messages: requestMessages,
                         tools: this.getToolsOpenAI()
@@ -672,7 +704,8 @@ Always explain what you're about to do before using tools.`;
             var choice = data.choices && data.choices[0];
             if (!choice) {
                 this.setLoading(false);
-                this.addMessage('error', 'No response from OpenAI');
+                var provider = aiAssistantConfig.provider === 'openai' ? 'OpenAI' : 'LLM';
+                this.addMessage('error', 'No response from ' + provider);
                 return;
             }
 
@@ -719,13 +752,15 @@ Always explain what you're about to do before using tools.`;
                     ...this.messages
                 ];
 
+                var model = this.conversationModel || config.model;
+
                 var response = await fetch(endpoint + '/v1/chat/completions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        model: config.model || 'llama2',
+                        model: model,
                         messages: requestMessages,
                         tools: this.getToolsOpenAI()
                     })
@@ -739,7 +774,7 @@ Always explain what you're about to do before using tools.`;
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            model: config.model || 'llama2',
+                            model: model,
                             messages: requestMessages,
                             tools: this.getToolsOpenAI(),
                             stream: false
@@ -1061,6 +1096,9 @@ Always explain what you're about to do before using tools.`;
             // Italic
             content = content.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
+            // Links [text](url)
+            content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
             // Line breaks
             content = content.replace(/\n/g, '<br>');
 
@@ -1293,6 +1331,8 @@ Always explain what you're about to do before using tools.`;
             this.pendingActions = [];
             this.conversationId = 0;
             this.conversationTitle = '';
+            this.conversationProvider = aiAssistantConfig.provider;
+            this.conversationModel = aiAssistantConfig.model;
             $('#ai-assistant-messages').empty();
             $('#ai-assistant-pending-actions').empty().hide();
             this.updateSidebarSelection();
@@ -1303,8 +1343,12 @@ Always explain what you're about to do before using tools.`;
         loadWelcomeMessage: function() {
             var config = aiAssistantConfig;
             if (!config.apiKey && config.provider !== 'local') {
-                this.addMessage('system', 'Welcome! Please configure your API key in Settings to start chatting.');
+                this.addMessage('system', 'Welcome! Please configure your API key in [Settings](' + config.settingsUrl + ') to start chatting.');
             } else {
+                var providerName = config.provider === 'anthropic' ? 'Anthropic' :
+                                   config.provider === 'openai' ? 'OpenAI' : 'Local LLM';
+                var modelInfo = config.model ? ' (' + config.model + ')' : '';
+                this.addMessage('system', 'Connected to **' + providerName + '**' + modelInfo);
                 this.addMessage('assistant', 'Hello! I\'m your Playground AI Assistant. I can help you manage your WordPress installation - read and modify files, manage plugins, query the database, and more. What would you like to do?');
             }
         },
@@ -1357,6 +1401,71 @@ Always explain what you're about to do before using tools.`;
             } catch (e) {
                 console.warn('[AI Assistant] Could not restore YOLO mode:', e);
             }
+        },
+
+        loadDraftHistory: function() {
+            try {
+                var stored = localStorage.getItem(this.draftHistoryKey);
+                if (stored) {
+                    this.draftHistory = JSON.parse(stored);
+                }
+            } catch (e) {
+                console.warn('[AI Assistant] Could not load draft history:', e);
+                this.draftHistory = [];
+            }
+        },
+
+        saveDraftHistory: function() {
+            try {
+                localStorage.setItem(this.draftHistoryKey, JSON.stringify(this.draftHistory));
+            } catch (e) {
+                console.warn('[AI Assistant] Could not save draft history:', e);
+            }
+        },
+
+        addToDraftHistory: function(message) {
+            if (!message || message.trim() === '') return;
+
+            // Don't add duplicates of the most recent entry
+            if (this.draftHistory.length > 0 && this.draftHistory[0] === message) {
+                return;
+            }
+
+            // Add to the beginning
+            this.draftHistory.unshift(message);
+
+            // Trim to max size
+            if (this.draftHistory.length > this.draftHistoryMax) {
+                this.draftHistory = this.draftHistory.slice(0, this.draftHistoryMax);
+            }
+
+            this.saveDraftHistory();
+        },
+
+        navigateDraftHistory: function(direction) {
+            if (this.draftHistory.length === 0) return;
+
+            var newIndex = this.draftHistoryIndex + direction;
+
+            // Clamp to valid range (-1 means current/empty)
+            if (newIndex < -1) newIndex = -1;
+            if (newIndex >= this.draftHistory.length) newIndex = this.draftHistory.length - 1;
+
+            if (newIndex === this.draftHistoryIndex) return;
+
+            this.draftHistoryIndex = newIndex;
+
+            var $input = $('#ai-assistant-input');
+            if (newIndex === -1) {
+                // Back to empty/current draft
+                $input.val('');
+            } else {
+                $input.val(this.draftHistory[newIndex]);
+            }
+
+            // Move cursor to end
+            var input = $input[0];
+            input.selectionStart = input.selectionEnd = input.value.length;
         },
 
         loadMostRecentConversation: function() {
@@ -1424,8 +1533,10 @@ Always explain what you're about to do before using tools.`;
                     action: 'ai_assistant_save_conversation',
                     _wpnonce: aiAssistantConfig.nonce,
                     conversation_id: this.conversationId,
-                    messages: JSON.stringify(this.messages),
-                    title: this.conversationTitle
+                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(this.messages)))),
+                    title: this.conversationTitle,
+                    provider: aiAssistantConfig.provider,
+                    model: aiAssistantConfig.model
                 },
                 success: function(response) {
                     if (response.success) {
@@ -1564,10 +1675,38 @@ Always explain what you're about to do before using tools.`;
                     if (response.success) {
                         self.conversationId = response.data.conversation_id;
                         self.conversationTitle = response.data.title;
-                        self.messages = self.sanitizeMessages(response.data.messages || []);
+                        // Decode base64 and parse JSON
+                        try {
+                            var base64 = response.data.messages_base64 || '';
+                            if (base64) {
+                                var json = decodeURIComponent(escape(atob(base64)));
+                                self.messages = JSON.parse(json);
+                            } else {
+                                self.messages = [];
+                            }
+                        } catch (e) {
+                            console.error('[AI Assistant] Failed to decode messages:', e);
+                            self.messages = [];
+                        }
 
                         // Clear and rebuild UI
                         $('#ai-assistant-messages').empty();
+
+                        // Set provider/model from loaded conversation (or fall back to current settings)
+                        var convProvider = response.data.provider || aiAssistantConfig.provider;
+                        var convModel = response.data.model || aiAssistantConfig.model;
+                        self.conversationProvider = convProvider;
+                        self.conversationModel = convModel;
+
+                        // Show conversation's provider/model info
+                        if (response.data.provider || response.data.model) {
+                            var providerName = convProvider === 'anthropic' ? 'Anthropic' :
+                                               convProvider === 'openai' ? 'OpenAI' :
+                                               convProvider === 'local' ? 'Local LLM' : convProvider;
+                            var modelInfo = convModel ? ' (' + convModel + ')' : '';
+                            self.addMessage('system', 'Restored conversation from **' + providerName + '**' + modelInfo);
+                        }
+
                         self.rebuildMessagesUI();
                         self.updateSidebarSelection();
                         $('#ai-assistant-input').focus();
@@ -1731,7 +1870,11 @@ Always explain what you're about to do before using tools.`;
                 }
             });
 
-            this.scrollToBottom();
+            // Delay scroll to ensure DOM has updated
+            var self = this;
+            setTimeout(function() {
+                self.scrollToBottom();
+            }, 100);
         },
 
         showConversationList: function() {
@@ -1838,68 +1981,6 @@ Always explain what you're about to do before using tools.`;
             var div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
-        },
-
-        sanitizeMessages: function(messages) {
-            // Fix tool_use blocks that may have corrupted input fields after serialization
-            console.log('[AI Assistant] sanitizeMessages: raw messages from server:', JSON.parse(JSON.stringify(messages)));
-
-            var sanitized = messages.map(function(msg, msgIndex) {
-                if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-                    msg.content = msg.content.map(function(block, blockIndex) {
-                        if (block.type === 'tool_use') {
-                            console.log('[AI Assistant] Found tool_use block at msg[' + msgIndex + '].content[' + blockIndex + ']:', {
-                                name: block.name,
-                                id: block.id,
-                                inputType: typeof block.input,
-                                inputIsArray: Array.isArray(block.input),
-                                inputValue: block.input
-                            });
-
-                            // Ensure input is an object
-                            if (typeof block.input === 'string') {
-                                console.warn('[AI Assistant] Fixing: input is string, parsing JSON');
-                                try {
-                                    block.input = JSON.parse(block.input);
-                                } catch(e) {
-                                    console.error('[AI Assistant] Failed to parse input string:', e);
-                                    block.input = {};
-                                }
-                            } else if (Array.isArray(block.input) && block.input.length === 0) {
-                                console.warn('[AI Assistant] Fixing: input is empty array, converting to object');
-                                block.input = {};
-                            } else if (!block.input || typeof block.input !== 'object') {
-                                console.warn('[AI Assistant] Fixing: input is invalid (' + typeof block.input + '), setting to empty object');
-                                block.input = {};
-                            } else {
-                                console.log('[AI Assistant] tool_use input OK:', block.input);
-                            }
-                        }
-                        return block;
-                    });
-                }
-                // Also handle user messages with tool_result blocks
-                if (msg.role === 'user' && Array.isArray(msg.content)) {
-                    msg.content = msg.content.map(function(block, blockIndex) {
-                        if (block.type === 'tool_result') {
-                            console.log('[AI Assistant] Found tool_result block at msg[' + msgIndex + '].content[' + blockIndex + ']:', {
-                                tool_use_id: block.tool_use_id,
-                                contentType: typeof block.content
-                            });
-                            // Ensure content is a string
-                            if (typeof block.content !== 'string') {
-                                console.warn('[AI Assistant] Fixing: tool_result content is not string, stringifying');
-                                block.content = JSON.stringify(block.content);
-                            }
-                        }
-                        return block;
-                    });
-                }
-                return msg;
-            });
-
-            console.log('[AI Assistant] sanitizeMessages: sanitized messages:', sanitized);
-            return sanitized;
         },
 
         autoSaveConversation: function() {
