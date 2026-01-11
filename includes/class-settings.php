@@ -18,6 +18,7 @@ class Settings {
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_ajax_ai_assistant_save_model', [$this, 'ajax_save_model']);
         add_action('load-tools_page_ai-conversations', [$this, 'add_help_tabs']);
+        add_action('load-settings_page_ai-conversations-settings', [$this, 'add_help_tabs']);
     }
 
     /**
