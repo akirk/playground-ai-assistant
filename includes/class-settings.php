@@ -472,6 +472,12 @@ class Settings {
                 }
                 .ai-chat-main {
                     position: relative;
+                    overflow: hidden;
+                    flex: 1;
+                    min-height: 0;
+                }
+                .ai-chat-main .ai-assistant-chat-container {
+                    height: 100%;
                 }
                 .ai-assistant-page {
                     margin-right: 0;
