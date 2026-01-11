@@ -1161,11 +1161,15 @@ class Settings {
             if ($permissionsHeading.length) {
                 $permissionsHeading.css('cursor', 'pointer')
                     .append(' <span class="dashicons dashicons-arrow-down-alt2" style="vertical-align: middle;"></span>');
-                var $permissionsTable = $permissionsHeading.next('table');
-                $permissionsTable.hide();
+
+                // Wrap all content after the heading until the next h2 or submit button
+                var $content = $permissionsHeading.nextUntil('h2, .submit, p.submit');
+                $content.wrapAll('<div class="ai-permissions-content"></div>');
+                var $wrapper = $('.ai-permissions-content');
+                $wrapper.hide();
 
                 $permissionsHeading.on('click', function() {
-                    $permissionsTable.slideToggle(200);
+                    $wrapper.slideToggle(200);
                     var $icon = $(this).find('.dashicons');
                     $icon.toggleClass('dashicons-arrow-down-alt2 dashicons-arrow-up-alt2');
                 });

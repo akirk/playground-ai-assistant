@@ -28,7 +28,7 @@ class Executor {
      */
     public function execute_tool(string $tool_name, array $arguments, string $permission = 'full') {
         // Validate permission
-        $read_only_tools = ['read_file', 'list_directory', 'file_exists', 'search_files', 'search_content', 'db_query', 'get_plugins', 'get_themes'];
+        $read_only_tools = ['read_file', 'list_directory', 'search_files', 'search_content', 'db_query', 'get_plugins', 'get_themes'];
 
         if ($permission === 'read_only' && !in_array($tool_name, $read_only_tools)) {
             throw new \Exception("Tool '$tool_name' requires full access permission");
@@ -42,57 +42,79 @@ class Executor {
         switch ($tool_name) {
             // File operations
             case 'read_file':
-                return $this->read_file($arguments['path']);
+                return $this->read_file($this->get_string_arg($arguments, 'path', $tool_name));
             case 'write_file':
-                return $this->write_file($arguments['path'], $arguments['content']);
+                $path = $this->get_string_arg($arguments, 'path', $tool_name);
+                $content = $this->get_content_arg($arguments, 'content', $tool_name);
+                return $this->write_file($path, $content);
             case 'edit_file':
-                return $this->edit_file($arguments['path'], $arguments['edits']);
-            case 'append_file':
-                return $this->append_file($arguments['path'], $arguments['content']);
+                $path = $this->get_string_arg($arguments, 'path', $tool_name);
+                $edits = $this->get_array_arg($arguments, 'edits', $tool_name);
+                return $this->edit_file($path, $edits);
             case 'delete_file':
-                return $this->delete_file($arguments['path']);
+                return $this->delete_file($this->get_string_arg($arguments, 'path', $tool_name));
             case 'list_directory':
-                return $this->list_directory($arguments['path']);
-            case 'create_directory':
-                return $this->create_directory($arguments['path']);
-            case 'file_exists':
-                return $this->file_exists_check($arguments['path']);
+                return $this->list_directory($this->get_string_arg($arguments, 'path', $tool_name));
             case 'search_files':
-                return $this->search_files($arguments['pattern']);
+                return $this->search_files($this->get_string_arg($arguments, 'pattern', $tool_name));
             case 'search_content':
                 return $this->search_content(
-                    $arguments['needle'],
-                    $arguments['directory'] ?? '',
-                    $arguments['file_pattern'] ?? '*.php'
+                    $this->get_string_arg($arguments, 'needle', $tool_name),
+                    $this->get_string_arg($arguments, 'directory', $tool_name, ''),
+                    $this->get_string_arg($arguments, 'file_pattern', $tool_name, '*.php')
                 );
 
             // Database operations
             case 'db_query':
-                return $this->db_query($arguments['sql']);
-            case 'db_insert':
-                return $this->db_insert($arguments['table'], $arguments['data']);
-            case 'db_update':
-                return $this->db_update($arguments['table'], $arguments['data'], $arguments['where']);
-            case 'db_delete':
-                return $this->db_delete($arguments['table'], $arguments['where']);
+                return $this->db_query($this->get_string_arg($arguments, 'sql', $tool_name));
 
             // WordPress operations
             case 'get_plugins':
                 return $this->get_plugins();
-            case 'activate_plugin':
-                return $this->activate_plugin($arguments['plugin']);
-            case 'deactivate_plugin':
-                return $this->deactivate_plugin($arguments['plugin']);
             case 'get_themes':
                 return $this->get_themes();
-            case 'switch_theme':
-                return $this->switch_theme($arguments['theme']);
             case 'run_php':
-                return $this->run_php($arguments['code']);
+                return $this->run_php($this->get_string_arg($arguments, 'code', $tool_name));
 
             default:
                 throw new \Exception("Unknown tool: $tool_name");
         }
+    }
+
+    private function get_string_arg(array $args, string $name, string $tool, ?string $default = null): string {
+        if (!isset($args[$name])) {
+            if ($default !== null) {
+                return $default;
+            }
+            throw new \Exception("$tool requires '$name' argument");
+        }
+        $value = $args[$name];
+        if (is_array($value)) {
+            return json_encode($value);
+        }
+        return (string) $value;
+    }
+
+    private function get_content_arg(array $args, string $name, string $tool): string {
+        if (!isset($args[$name])) {
+            throw new \Exception("$tool requires '$name' argument");
+        }
+        $value = $args[$name];
+        if (!is_string($value)) {
+            return json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        }
+        return $value;
+    }
+
+    private function get_array_arg(array $args, string $name, string $tool): array {
+        if (!isset($args[$name])) {
+            throw new \Exception("$tool requires '$name' argument");
+        }
+        $value = $args[$name];
+        if (!is_array($value)) {
+            throw new \Exception("$tool '$name' must be an array");
+        }
+        return $value;
     }
 
     // ===== FILE OPERATIONS =====
@@ -259,25 +281,6 @@ class Executor {
         ];
     }
 
-    private function append_file(string $path, string $content): array {
-        $full_path = $this->resolve_path($path);
-
-        if (!file_exists($full_path)) {
-            throw new \Exception("File not found: $path");
-        }
-
-        if (file_put_contents($full_path, $content, FILE_APPEND) === false) {
-            throw new \Exception("Failed to append to file: $path");
-        }
-
-        return [
-            'path' => $path,
-            'action' => 'appended',
-            'appended_size' => strlen($content),
-            'new_size' => filesize($full_path),
-        ];
-    }
-
     private function delete_file(string $path): array {
         $full_path = $this->resolve_path($path);
 
@@ -341,33 +344,6 @@ class Executor {
             'path' => $path,
             'items' => $items,
             'count' => count($items),
-        ];
-    }
-
-    private function create_directory(string $path): array {
-        $full_path = $this->resolve_path($path);
-
-        if (file_exists($full_path)) {
-            throw new \Exception("Path already exists: $path");
-        }
-
-        if (!mkdir($full_path, 0755, true)) {
-            throw new \Exception("Failed to create directory: $path");
-        }
-
-        return [
-            'path' => $path,
-            'action' => 'created',
-        ];
-    }
-
-    private function file_exists_check(string $path): array {
-        $full_path = $this->resolve_path($path);
-
-        return [
-            'path' => $path,
-            'exists' => file_exists($full_path),
-            'type' => file_exists($full_path) ? (is_dir($full_path) ? 'directory' : 'file') : null,
         ];
     }
 
@@ -486,60 +462,6 @@ class Executor {
         ];
     }
 
-    private function db_insert(string $table, array $data): array {
-        global $wpdb;
-
-        $table_name = $wpdb->prefix . $table;
-
-        $result = $wpdb->insert($table_name, $data);
-
-        if ($result === false) {
-            throw new \Exception("Insert failed: " . $wpdb->last_error);
-        }
-
-        return [
-            'table' => $table,
-            'action' => 'inserted',
-            'id' => $wpdb->insert_id,
-        ];
-    }
-
-    private function db_update(string $table, array $data, array $where): array {
-        global $wpdb;
-
-        $table_name = $wpdb->prefix . $table;
-
-        $result = $wpdb->update($table_name, $data, $where);
-
-        if ($result === false) {
-            throw new \Exception("Update failed: " . $wpdb->last_error);
-        }
-
-        return [
-            'table' => $table,
-            'action' => 'updated',
-            'rows_affected' => $result,
-        ];
-    }
-
-    private function db_delete(string $table, array $where): array {
-        global $wpdb;
-
-        $table_name = $wpdb->prefix . $table;
-
-        $result = $wpdb->delete($table_name, $where);
-
-        if ($result === false) {
-            throw new \Exception("Delete failed: " . $wpdb->last_error);
-        }
-
-        return [
-            'table' => $table,
-            'action' => 'deleted',
-            'rows_affected' => $result,
-        ];
-    }
-
     // ===== WORDPRESS OPERATIONS =====
 
     private function get_plugins(): array {
@@ -569,36 +491,6 @@ class Executor {
         ];
     }
 
-    private function activate_plugin(string $plugin): array {
-        if (!function_exists('activate_plugin')) {
-            require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        }
-
-        $result = activate_plugin($plugin);
-
-        if (is_wp_error($result)) {
-            throw new \Exception("Failed to activate plugin: " . $result->get_error_message());
-        }
-
-        return [
-            'plugin' => $plugin,
-            'action' => 'activated',
-        ];
-    }
-
-    private function deactivate_plugin(string $plugin): array {
-        if (!function_exists('deactivate_plugins')) {
-            require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        }
-
-        deactivate_plugins($plugin);
-
-        return [
-            'plugin' => $plugin,
-            'action' => 'deactivated',
-        ];
-    }
-
     private function get_themes(): array {
         $all_themes = wp_get_themes();
         $active_theme = get_stylesheet();
@@ -619,23 +511,6 @@ class Executor {
             'themes' => $themes,
             'total' => count($themes),
             'active' => $active_theme,
-        ];
-    }
-
-    private function switch_theme(string $theme): array {
-        $all_themes = wp_get_themes();
-
-        if (!isset($all_themes[$theme])) {
-            throw new \Exception("Theme not found: $theme");
-        }
-
-        $old_theme = get_stylesheet();
-        switch_theme($theme);
-
-        return [
-            'theme' => $theme,
-            'action' => 'switched',
-            'previous_theme' => $old_theme,
         ];
     }
 

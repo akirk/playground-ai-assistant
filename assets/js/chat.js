@@ -32,6 +32,7 @@
             // Set default provider/model from settings (will be overwritten if loading a conversation)
             this.conversationProvider = aiAssistantConfig.provider;
             this.conversationModel = aiAssistantConfig.model;
+            this.updateSendButton();
 
             // Check if we're on the full page and have a conversation to load
             if (typeof aiAssistantPageConfig !== 'undefined') {
@@ -551,7 +552,7 @@ Always explain what you're about to do before using tools.`;
         },
 
         sendMessage: function() {
-            if (this.isLoading) return;
+            if (this.isLoading || !this.isProviderConfigured()) return;
 
             var $input = $('#ai-assistant-input');
             var message = $input.val().trim();
@@ -1333,6 +1334,7 @@ Always explain what you're about to do before using tools.`;
             this.conversationTitle = '';
             this.conversationProvider = aiAssistantConfig.provider;
             this.conversationModel = aiAssistantConfig.model;
+            this.updateSendButton();
             $('#ai-assistant-messages').empty();
             $('#ai-assistant-pending-actions').empty().hide();
             this.updateSidebarSelection();
@@ -1488,20 +1490,28 @@ Always explain what you're about to do before using tools.`;
             });
         },
 
+        isProviderConfigured: function() {
+            return !!(this.conversationProvider && this.conversationModel);
+        },
+
+        updateSendButton: function() {
+            var $send = $('#ai-assistant-send');
+            var disabled = this.isLoading || !this.isProviderConfigured();
+            $send.prop('disabled', disabled);
+        },
+
         setLoading: function(loading) {
             this.isLoading = loading;
             var $loading = $('#ai-assistant-loading');
-            var $send = $('#ai-assistant-send');
 
             if (loading) {
                 $loading.show();
-                $send.prop('disabled', true);
                 window.addEventListener('beforeunload', this.beforeUnloadHandler);
             } else {
                 $loading.hide();
-                $send.prop('disabled', false);
                 window.removeEventListener('beforeunload', this.beforeUnloadHandler);
             }
+            this.updateSendButton();
         },
 
         beforeUnloadHandler: function(e) {
@@ -1697,6 +1707,7 @@ Always explain what you're about to do before using tools.`;
                         var convModel = response.data.model || aiAssistantConfig.model;
                         self.conversationProvider = convProvider;
                         self.conversationModel = convModel;
+                        self.updateSendButton();
 
                         // Show conversation's provider/model info
                         if (response.data.provider || response.data.model) {
