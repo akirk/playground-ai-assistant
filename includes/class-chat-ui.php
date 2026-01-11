@@ -70,11 +70,9 @@ class Chat_UI {
                 'send' => __('Send', 'ai-assistant'),
                 'thinking' => __('Thinking...', 'ai-assistant'),
                 'error' => __('An error occurred. Please try again.', 'ai-assistant'),
+                'confirmTitle' => __('Confirm Action', 'ai-assistant'),
                 'confirm' => __('Confirm', 'ai-assistant'),
                 'cancel' => __('Cancel', 'ai-assistant'),
-                'confirmTitle' => __('Confirm Action', 'ai-assistant'),
-                'confirmAll' => __('Confirm All', 'ai-assistant'),
-                'skipAll' => __('Skip All', 'ai-assistant'),
                 'newChat' => __('New Chat', 'ai-assistant'),
                 'close' => __('Close', 'ai-assistant'),
             ]
@@ -186,6 +184,8 @@ class Chat_UI {
                     <div class="ai-assistant-header">
                         <h2>' . $title . '</h2>
                         <div class="ai-assistant-header-actions">
+                            <span id="ai-token-count" class="ai-token-count" title="Estimated token usage">0 tokens</span>
+                            <span class="ai-header-sep">|</span>
                             <label class="ai-yolo-label" title="Skip confirmation prompts for destructive actions"><input type="checkbox" id="ai-assistant-yolo"> YOLO Mode</label>
                             <span class="ai-header-sep">|</span>
                             <a href="#" id="ai-assistant-new-chat" class="ai-header-link">' . $new_chat . '</a>

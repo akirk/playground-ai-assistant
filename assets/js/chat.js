@@ -33,6 +33,7 @@
             this.conversationProvider = aiAssistantConfig.provider;
             this.conversationModel = aiAssistantConfig.model;
             this.updateSendButton();
+            this.updateTokenCount();
 
             // Check if we're on the full page and have a conversation to load
             if (typeof aiAssistantPageConfig !== 'undefined') {
@@ -96,18 +97,6 @@
             $(document).on('click', '#ai-assistant-new-chat', function(e) {
                 e.preventDefault();
                 self.newChat();
-            });
-
-            $(document).on('click', '.ai-confirm-action', function(e) {
-                e.preventDefault();
-                var actionId = $(this).data('action-id');
-                self.confirmAction(actionId, true);
-            });
-
-            $(document).on('click', '.ai-skip-action', function(e) {
-                e.preventDefault();
-                var actionId = $(this).data('action-id');
-                self.confirmAction(actionId, false);
             });
 
             $(document).on('click', '#ai-confirm-all', function(e) {
@@ -566,6 +555,7 @@ Always explain what you're about to do before using tools.`;
             this.clearDraft();
             this.draftHistoryIndex = -1;
 
+            this.updateTokenCount();
             this.callLLM();
         },
 
@@ -653,6 +643,7 @@ Always explain what you're about to do before using tools.`;
 
             // Add assistant message to history
             this.messages.push({ role: 'assistant', content: data.content });
+            this.updateTokenCount();
 
             if (toolCalls.length > 0) {
                 this.processToolCalls(toolCalls, 'anthropic');
@@ -732,6 +723,7 @@ Always explain what you're about to do before using tools.`;
 
             // Add to message history
             this.messages.push(message);
+            this.updateTokenCount();
 
             if (toolCalls.length > 0) {
                 this.processToolCalls(toolCalls, 'openai');
@@ -938,6 +930,9 @@ Always explain what you're about to do before using tools.`;
         handleToolResults: function(results, provider) {
             var self = this;
 
+            // Deduplicate file reads to save context
+            this.deduplicateFileReads(results);
+
             // Show results in UI
             this.showToolResults(results);
 
@@ -961,6 +956,9 @@ Always explain what you're about to do before using tools.`;
                     });
                 });
             }
+
+            // Update token count
+            this.updateTokenCount();
 
             // Continue the conversation
             this.callLLM();
@@ -1171,9 +1169,9 @@ Always explain what you're about to do before using tools.`;
                 '<h4>' + aiAssistantConfig.strings.confirmTitle + '</h4>' +
                 '<div class="ai-pending-bulk-actions">' +
                 '<button id="ai-confirm-all" class="button button-primary button-small">' +
-                aiAssistantConfig.strings.confirmAll + '</button>' +
+                aiAssistantConfig.strings.confirm + '</button>' +
                 '<button id="ai-skip-all" class="button button-small">' +
-                aiAssistantConfig.strings.skipAll + '</button>' +
+                aiAssistantConfig.strings.cancel + '</button>' +
                 '</div></div><div class="ai-pending-list">';
 
             actions.forEach(function(action) {
@@ -1197,12 +1195,6 @@ Always explain what you're about to do before using tools.`;
                     '<span class="ai-action-tool">' + action.tool + '</span>' +
                     '<span class="ai-action-desc">' + self.escapeHtml(action.description) + '</span>' +
                     previewHtml +
-                    '</div>' +
-                    '<div class="ai-action-buttons">' +
-                    '<button class="button button-primary button-small ai-confirm-action" data-action-id="' + action.id + '">' +
-                    aiAssistantConfig.strings.confirm + '</button>' +
-                    '<button class="button button-small ai-skip-action" data-action-id="' + action.id + '">' +
-                    aiAssistantConfig.strings.cancel + '</button>' +
                     '</div></div>';
             });
 
@@ -1353,6 +1345,7 @@ Always explain what you're about to do before using tools.`;
             this.conversationProvider = aiAssistantConfig.provider;
             this.conversationModel = aiAssistantConfig.model;
             this.updateSendButton();
+            this.updateTokenCount();
             $('#ai-assistant-messages').empty();
             $('#ai-assistant-pending-actions').empty().hide();
             this.updateSidebarSelection();
@@ -1726,6 +1719,7 @@ Always explain what you're about to do before using tools.`;
                         self.conversationProvider = convProvider;
                         self.conversationModel = convModel;
                         self.updateSendButton();
+                        self.updateTokenCount();
 
                         self.rebuildMessagesUI();
 
@@ -2005,6 +1999,105 @@ Always explain what you're about to do before using tools.`;
             var div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        },
+
+        estimateTokens: function() {
+            var totalChars = this.systemPrompt.length;
+
+            this.messages.forEach(function(msg) {
+                if (typeof msg.content === 'string') {
+                    totalChars += msg.content.length;
+                } else if (Array.isArray(msg.content)) {
+                    msg.content.forEach(function(block) {
+                        if (block.type === 'text' && block.text) {
+                            totalChars += block.text.length;
+                        } else if (block.type === 'tool_use' && block.input) {
+                            totalChars += JSON.stringify(block.input).length;
+                        } else if (block.type === 'tool_result' && block.content) {
+                            totalChars += block.content.length;
+                        }
+                    });
+                }
+                // OpenAI format tool calls
+                if (msg.tool_calls) {
+                    totalChars += JSON.stringify(msg.tool_calls).length;
+                }
+            });
+
+            // Rough estimate: ~4 characters per token
+            return Math.ceil(totalChars / 4);
+        },
+
+        updateTokenCount: function() {
+            var tokens = this.estimateTokens();
+            var display = tokens.toLocaleString() + ' tokens';
+
+            // Color coding based on token count
+            var $counter = $('#ai-token-count');
+            $counter.text(display);
+            $counter.removeClass('ai-tokens-warning ai-tokens-danger');
+
+            if (tokens > 100000) {
+                $counter.addClass('ai-tokens-danger');
+            } else if (tokens > 50000) {
+                $counter.addClass('ai-tokens-warning');
+            }
+        },
+
+        deduplicateFileReads: function(newResults) {
+            var self = this;
+
+            // Find paths of files being read in new results
+            var newReadPaths = {};
+            newResults.forEach(function(r) {
+                if (r.name === 'read_file' && r.success && r.result && r.result.path) {
+                    newReadPaths[r.result.path] = r.id;
+                }
+            });
+
+            if (Object.keys(newReadPaths).length === 0) return;
+
+            // Find and remove old read_file tool uses and results for these paths
+            var oldToolIds = new Set();
+
+            this.messages.forEach(function(msg) {
+                if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+                    msg.content.forEach(function(block) {
+                        if (block.type === 'tool_use' && block.name === 'read_file' &&
+                            block.input && block.input.path && newReadPaths[block.input.path] &&
+                            block.id !== newReadPaths[block.input.path]) {
+                            oldToolIds.add(block.id);
+                        }
+                    });
+                }
+            });
+
+            if (oldToolIds.size === 0) return;
+
+            console.log('[AI Assistant] Deduplicating ' + oldToolIds.size + ' old read_file calls');
+
+            // Remove old tool_use blocks and their results
+            this.messages = this.messages.map(function(msg) {
+                if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+                    msg.content = msg.content.filter(function(block) {
+                        return !(block.type === 'tool_use' && oldToolIds.has(block.id));
+                    });
+                }
+                if (msg.role === 'user' && Array.isArray(msg.content)) {
+                    msg.content = msg.content.filter(function(block) {
+                        return !(block.type === 'tool_result' && oldToolIds.has(block.tool_use_id));
+                    });
+                }
+                // OpenAI format
+                if (msg.role === 'tool' && oldToolIds.has(msg.tool_call_id)) {
+                    return null;
+                }
+                return msg;
+            }).filter(function(msg) {
+                if (msg === null) return false;
+                if (Array.isArray(msg.content) && msg.content.length === 0) return false;
+                return true;
+            });
         },
 
         autoSaveConversation: function() {
