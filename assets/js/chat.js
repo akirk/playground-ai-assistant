@@ -1494,7 +1494,12 @@
 
         scrollToBottom: function() {
             var $messages = $('#ai-assistant-messages');
-            $messages.scrollTop($messages[0].scrollHeight);
+            // On mobile (full page), the page scrolls instead of the container
+            if (this.isFullPage && window.innerWidth <= 782) {
+                window.scrollTo(0, document.body.scrollHeight);
+            } else {
+                $messages.scrollTop($messages[0].scrollHeight);
+            }
         },
 
         // Conversation persistence methods
