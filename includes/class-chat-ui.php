@@ -11,16 +11,29 @@ if (!defined('ABSPATH')) {
 class Chat_UI {
 
     public function __construct() {
-        // Add our tab to screen-meta-links
+        // Admin hooks
         add_action('admin_footer', [$this, 'render_screen_meta_tab']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
+
+        // Frontend hooks (only if enabled in settings)
+        if ($this->is_frontend_enabled()) {
+            add_action('wp_footer', [$this, 'render_screen_meta_tab']);
+            add_action('wp_enqueue_scripts', [$this, 'enqueue_assets']);
+        }
+    }
+
+    /**
+     * Check if frontend display is enabled
+     */
+    private function is_frontend_enabled() {
+        return get_option('ai_assistant_show_on_frontend', '0') === '1';
     }
 
     /**
      * Enqueue CSS and JavaScript
      */
     public function enqueue_assets() {
-        if (!is_admin() || !$this->user_has_access()) {
+        if (!$this->user_has_access()) {
             return;
         }
 
@@ -75,85 +88,143 @@ class Chat_UI {
     }
 
     /**
-     * Render the screen-meta tab and content panel
+     * Render the screen-meta tab and content panel (or standalone fallback)
      */
     public function render_screen_meta_tab() {
-        if (!is_admin() || !$this->user_has_access()) {
+        if (!$this->user_has_access()) {
             return;
         }
 
         // Don't render on the dedicated AI Assistant page (it has its own UI)
-        $screen = get_current_screen();
-        if ($screen && $screen->id === 'tools_page_ai-conversations') {
-            return;
+        if (is_admin()) {
+            $screen = get_current_screen();
+            if ($screen && $screen->id === 'tools_page_ai-conversations') {
+                return;
+            }
         }
+
+        $panel_html = $this->get_panel_html();
+        $button_text = esc_html__('AI Assistant', 'ai-assistant');
         ?>
+        <!-- Standalone mode HTML - matches WordPress screen-meta structure -->
+        <div id="ai-assistant-standalone-wrap" class="ai-assistant-standalone-wrap" style="display: none;">
+            <div id="ai-assistant-standalone-panel" class="ai-assistant-standalone-panel">
+                <?php echo $panel_html; ?>
+            </div>
+            <div class="ai-assistant-standalone-links">
+                <div id="ai-assistant-standalone-trigger" class="ai-assistant-standalone-trigger hide-if-no-js">
+                    <button type="button" aria-controls="ai-assistant-standalone-panel" aria-expanded="false">
+                        <?php echo $button_text; ?>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <script>
         jQuery(document).ready(function($) {
-            // Add the AI Assistant tab button to screen-meta-links
             var $screenMetaLinks = $('#screen-meta-links');
-            if ($screenMetaLinks.length) {
+            var $screenMeta = $('#screen-meta');
+            var hasScreenMeta = $screenMetaLinks.length > 0 && $screenMeta.length > 0;
+
+            if (hasScreenMeta) {
+                // Screen-meta mode: inject into WordPress admin UI
                 $screenMetaLinks.prepend(
                     '<div id="ai-assistant-link-wrap" class="hide-if-no-js screen-meta-toggle">' +
                     '<button type="button" id="ai-assistant-link" class="button show-settings" aria-controls="ai-assistant-wrap" aria-expanded="false">' +
-                    '<?php esc_html_e('AI Assistant', 'ai-assistant'); ?>' +
+                    '<?php echo esc_js($button_text); ?>' +
                     '</button>' +
                     '</div>'
                 );
-            }
 
-            // Add the AI Assistant panel to screen-meta
-            var $screenMeta = $('#screen-meta');
-            if ($screenMeta.length) {
-                $screenMeta.prepend(<?php echo json_encode($this->get_panel_html()); ?>);
-            }
+                // Move the panel HTML from standalone to screen-meta
+                var $standaloneWrap = $('#ai-assistant-standalone-wrap');
+                var $standalonePanel = $('#ai-assistant-standalone-panel');
+                var panelContent = $standalonePanel.html();
+                $standaloneWrap.remove();
+                $screenMeta.prepend(panelContent);
 
-            // Close our panel when other screen-meta buttons are clicked
-            $('#contextual-help-link, #show-settings-link').on('click', function() {
-                var $wrap = $('#ai-assistant-wrap');
-                if ($wrap.hasClass('screen-meta-active')) {
-                    $wrap.slideUp('fast', function() {
-                        $wrap.removeClass('screen-meta-active').addClass('hidden');
-                    });
-                    $('#ai-assistant-link').attr('aria-expanded', 'false');
-                }
-            });
-
-            // Handle toggle behavior (matching WordPress core pattern)
-            $('#ai-assistant-link').on('click', function() {
-                var $wrap = $('#ai-assistant-wrap');
-                var $button = $(this);
-                var isExpanded = $button.attr('aria-expanded') === 'true';
-
-                // Close other panels first (like WordPress does)
-                $('#screen-meta').find('.screen-meta-active').not($wrap).slideUp('fast', function() {
-                    $(this).removeClass('screen-meta-active').addClass('hidden');
-                });
-                $('.screen-meta-toggle button').not($button).attr('aria-expanded', 'false');
-
-                if (isExpanded) {
-                    // Close our panel
-                    $wrap.slideUp('fast', function() {
-                        $wrap.removeClass('screen-meta-active').addClass('hidden');
-                    });
-                    $button.attr('aria-expanded', 'false');
-                } else {
-                    // Open our panel
-                    $wrap.removeClass('hidden').addClass('screen-meta-active').slideDown('fast', function() {
-                        // Use setTimeout to ensure the browser has completed rendering
-                        setTimeout(function() {
-                            $('#ai-assistant-input').trigger('focus');
-                            window.aiAssistant.scrollToBottom();
-                        }, 50);
-                    });
-                    $button.attr('aria-expanded', 'true');
-
-                    // Initialize welcome message if empty
-                    if ($('#ai-assistant-messages').children().length === 0) {
-                        window.aiAssistant.loadWelcomeMessage();
+                // Close our panel when other screen-meta buttons are clicked
+                $('#contextual-help-link, #show-settings-link').on('click', function() {
+                    var $wrap = $('#ai-assistant-wrap');
+                    if ($wrap.hasClass('screen-meta-active')) {
+                        $wrap.slideUp('fast', function() {
+                            $wrap.removeClass('screen-meta-active').addClass('hidden');
+                        });
+                        $('#ai-assistant-link').attr('aria-expanded', 'false');
                     }
-                }
-            });
+                });
+
+                // Handle toggle behavior (matching WordPress core pattern)
+                $('#ai-assistant-link').on('click', function() {
+                    var $wrap = $('#ai-assistant-wrap');
+                    var $button = $(this);
+                    var isExpanded = $button.attr('aria-expanded') === 'true';
+
+                    // Close other panels first (like WordPress does)
+                    $('#screen-meta').find('.screen-meta-active').not($wrap).slideUp('fast', function() {
+                        $(this).removeClass('screen-meta-active').addClass('hidden');
+                    });
+                    $('.screen-meta-toggle button').not($button).attr('aria-expanded', 'false');
+
+                    if (isExpanded) {
+                        $wrap.slideUp('fast', function() {
+                            $wrap.removeClass('screen-meta-active').addClass('hidden');
+                        });
+                        $button.attr('aria-expanded', 'false');
+                    } else {
+                        $wrap.removeClass('hidden').addClass('screen-meta-active').slideDown('fast', function() {
+                            setTimeout(function() {
+                                $('#ai-assistant-input').trigger('focus');
+                                window.aiAssistant.scrollToBottom();
+                            }, 50);
+                        });
+                        $button.attr('aria-expanded', 'true');
+
+                        if ($('#ai-assistant-messages').children().length === 0) {
+                            window.aiAssistant.loadWelcomeMessage();
+                        }
+                    }
+                });
+            } else {
+                // Standalone mode: matches WordPress screen-meta behavior exactly
+                var $wrap = $('#ai-assistant-standalone-wrap');
+                var $panel = $('#ai-assistant-standalone-panel');
+                var $trigger = $('#ai-assistant-standalone-trigger');
+                var $button = $trigger.find('button');
+
+                // Show the standalone wrapper
+                $wrap.show();
+
+                $button.on('click', function() {
+                    var isExpanded = $button.attr('aria-expanded') === 'true';
+
+                    if (isExpanded) {
+                        // Close panel with slideUp animation (matches WordPress behavior)
+                        $panel.slideUp('fast');
+                        $button.attr('aria-expanded', 'false');
+                    } else {
+                        // Open panel with slideDown animation (matches WordPress behavior)
+                        $panel.slideDown('fast', function() {
+                            setTimeout(function() {
+                                $('#ai-assistant-input').trigger('focus');
+                                window.aiAssistant.scrollToBottom();
+                            }, 50);
+                        });
+                        $button.attr('aria-expanded', 'true');
+
+                        if ($('#ai-assistant-messages').children().length === 0) {
+                            window.aiAssistant.loadWelcomeMessage();
+                        }
+                    }
+                });
+
+                // Close on Escape key
+                $(document).on('keydown', function(e) {
+                    if (e.key === 'Escape' && $button.attr('aria-expanded') === 'true') {
+                        $button.trigger('click');
+                    }
+                });
+            }
         });
         </script>
         <?php

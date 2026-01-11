@@ -528,6 +528,97 @@
     background: #a7aaad;
 }
 
+/* Standalone Mode - Matches WordPress screen-meta styling exactly */
+
+/* Container for standalone mode - mimics #screen-meta positioning */
+.ai-assistant-standalone-wrap {
+    position: fixed;
+    top: 32px; /* Below admin bar */
+    left: 0;
+    right: 0;
+    z-index: 99999;
+    pointer-events: none;
+}
+
+body:not(.admin-bar) .ai-assistant-standalone-wrap {
+    top: 0;
+}
+
+/* The panel - matches #screen-meta styling */
+.ai-assistant-standalone-panel {
+    display: none; /* jQuery slideDown/slideUp controls visibility */
+    margin: 0 20px -1px 0;
+    position: relative;
+    background-color: #fff;
+    border: 1px solid #c3c4c7;
+    border-top: none;
+    pointer-events: auto;
+}
+
+.ai-assistant-standalone-panel #ai-assistant-columns {
+    margin: 0 auto;
+    overflow: hidden;
+    padding: 18px 20px;
+}
+
+.ai-assistant-standalone-panel .ai-assistant-chat-container {
+    height: 380px;
+}
+
+.ai-assistant-standalone-panel .ai-assistant-chat-container.expanded {
+    height: calc(100vh - 150px);
+}
+
+/* Button container - matches #screen-meta-links positioning */
+.ai-assistant-standalone-links {
+    float: right;
+    margin: 0 20px 0 0;
+    pointer-events: auto;
+}
+
+/* Button wrap - matches .screen-meta-toggle */
+.ai-assistant-standalone-trigger {
+    float: left;
+    margin: 0 0 0 6px;
+    position: relative;
+    top: 0;
+}
+
+/* The button itself - matches .show-settings button */
+.ai-assistant-standalone-trigger button {
+    display: block;
+    padding: 6px 10px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #646970;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    cursor: pointer;
+    text-decoration: none;
+    box-shadow: none;
+    transition: none;
+}
+
+.ai-assistant-standalone-trigger button:hover,
+.ai-assistant-standalone-trigger button:focus {
+    color: #2c3338;
+}
+
+.ai-assistant-standalone-trigger button:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: 2px solid transparent;
+}
+
+/* Clearfix for the links container */
+.ai-assistant-standalone-links::after {
+    content: "";
+    display: table;
+    clear: both;
+}
+
 /* Responsive */
 @media screen and (max-width: 782px) {
     .ai-assistant-chat-container {
@@ -536,5 +627,22 @@
 
     .ai-message {
         max-width: 95%;
+    }
+
+    /* Standalone responsive adjustments */
+    .ai-assistant-standalone-wrap {
+        top: 46px; /* Mobile admin bar is taller */
+    }
+
+    body:not(.admin-bar) .ai-assistant-standalone-wrap {
+        top: 0;
+    }
+
+    .ai-assistant-standalone-panel {
+        margin-right: 10px;
+    }
+
+    .ai-assistant-standalone-links {
+        margin-right: 10px;
     }
 }

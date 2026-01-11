@@ -498,6 +498,9 @@ class Settings {
         register_setting('ai_assistant_settings', 'ai_assistant_local_model');
         register_setting('ai_assistant_settings', 'ai_assistant_role_permissions');
 
+        // Display settings
+        register_setting('ai_assistant_settings', 'ai_assistant_show_on_frontend');
+
         // Provider section
         add_settings_section(
             'ai_assistant_provider_section',
@@ -561,6 +564,22 @@ class Settings {
             'ai-conversations-settings',
             'ai_assistant_permissions_section'
         );
+
+        // Display section
+        add_settings_section(
+            'ai_assistant_display_section',
+            __('Display Settings', 'ai-assistant'),
+            [$this, 'display_section_callback'],
+            'ai-conversations-settings'
+        );
+
+        add_settings_field(
+            'ai_assistant_show_on_frontend',
+            __('Frontend Access', 'ai-assistant'),
+            [$this, 'frontend_field_callback'],
+            'ai-conversations-settings',
+            'ai_assistant_display_section'
+        );
     }
 
     /**
@@ -597,6 +616,32 @@ class Settings {
      */
     public function permissions_section_callback() {
         echo '<p>' . esc_html__('Configure what each WordPress role can do with the AI Assistant.', 'ai-assistant') . '</p>';
+    }
+
+    /**
+     * Display section description
+     */
+    public function display_section_callback() {
+        echo '<p>' . esc_html__('Configure where the AI Assistant appears.', 'ai-assistant') . '</p>';
+    }
+
+    /**
+     * Frontend access checkbox field
+     */
+    public function frontend_field_callback() {
+        $show_on_frontend = get_option('ai_assistant_show_on_frontend', '0');
+        ?>
+        <label>
+            <input type="checkbox"
+                   name="ai_assistant_show_on_frontend"
+                   value="1"
+                   <?php checked($show_on_frontend, '1'); ?>>
+            <?php esc_html_e('Show AI Assistant on the frontend', 'ai-assistant'); ?>
+        </label>
+        <p class="description">
+            <?php esc_html_e('When enabled, logged-in users with access will see the AI Assistant button on the frontend of your site.', 'ai-assistant'); ?>
+        </p>
+        <?php
     }
 
     /**
