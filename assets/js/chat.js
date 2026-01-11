@@ -1852,32 +1852,43 @@ Always explain what you're about to do before using tools.`;
                 console.log('[AI Assistant] Processing message', index, ':', msg.role, typeof msg.content);
                 if (msg.role === 'user') {
                     // User messages can be string or array (tool_result)
-                    if (typeof msg.content === 'string') {
-                        console.log('[AI Assistant] Adding user message:', msg.content.substring(0, 50));
+                    if (typeof msg.content === 'string' && msg.content.trim()) {
                         self.addMessage('user', msg.content);
                     } else if (Array.isArray(msg.content)) {
-                        // Check if it's a tool_result or actual user content
                         msg.content.forEach(function(block) {
                             if (block.type === 'tool_result') {
-                                // Tool results are shown inline with their tool_use, skip displaying separately
-                            } else if (block.type === 'text') {
+                                // Tool results are shown inline with tool_use, skip
+                            } else if (block.type === 'text' && block.text && block.text.trim()) {
                                 self.addMessage('user', block.text);
                             }
                         });
                     }
                 } else if (msg.role === 'assistant') {
                     // Handle both string content and array content (with tool_use blocks)
-                    if (typeof msg.content === 'string') {
+                    if (typeof msg.content === 'string' && msg.content.trim()) {
                         self.addMessage('assistant', msg.content);
                     } else if (Array.isArray(msg.content)) {
                         msg.content.forEach(function(block) {
-                            if (block.type === 'text' && block.text) {
+                            if (block.type === 'text' && block.text && block.text.trim()) {
                                 self.addMessage('assistant', block.text);
                             } else if (block.type === 'tool_use') {
                                 self.addToolUseMessage(block.name, block.input || block.arguments || {});
                             }
                         });
                     }
+                    // OpenAI format: assistant with tool_calls
+                    if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+                        msg.tool_calls.forEach(function(tc) {
+                            var args = tc.function ? tc.function.arguments : tc.arguments;
+                            var name = tc.function ? tc.function.name : tc.name;
+                            try {
+                                args = JSON.parse(args);
+                            } catch(e) {}
+                            self.addToolUseMessage(name, args || {});
+                        });
+                    }
+                } else if (msg.role === 'tool') {
+                    // OpenAI format tool result - skip, shown with tool_use
                 }
             });
 
