@@ -208,6 +208,8 @@ class Settings {
         <style>
             .ai-assistant-page {
                 margin-right: 20px;
+                margin-top: 3em;
+                clear: both;
             }
             .ai-chat-layout {
                 display: flex;

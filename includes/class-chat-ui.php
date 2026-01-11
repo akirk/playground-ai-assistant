@@ -172,7 +172,7 @@ class Chat_UI {
     private function get_panel_html() {
         $title = esc_html__('Playground AI Assistant', 'ai-assistant');
         $new_chat = esc_html__('New Chat', 'ai-assistant');
-        $history = esc_html__('History', 'ai-assistant');
+        $history = esc_html__('Conversations', 'ai-assistant');
         $settings = esc_html__('Settings', 'ai-assistant');
         $send = esc_html__('Send', 'ai-assistant');
         $placeholder = esc_attr__('Ask me anything about your WordPress site...', 'ai-assistant');
