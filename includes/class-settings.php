@@ -1109,6 +1109,9 @@ FILE EDITING RULES:
 
 IMPORTANT: For any destructive operations (file deletion, database modification, file overwriting), the user will be asked to confirm before execution. Be clear about what changes you're proposing.
 
+ENVIRONMENT CONSTRAINTS:
+- Node and npm are not available in this environment. Do not attempt to use node, npm, npx, or related commands.
+
 Always explain what you're about to do before using tools.";
     }
 }

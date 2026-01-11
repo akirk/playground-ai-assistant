@@ -843,12 +843,16 @@
                             }
                         }
 
-                        resolve({
+                        var toolResult = {
                             id: toolCall.id,
                             name: toolName,
                             result: response.success ? response.data : { error: errorMessage },
                             success: response.success
-                        });
+                        };
+                        if (!response.success) {
+                            toolResult.input = toolCall.arguments;
+                        }
+                        resolve(toolResult);
                     },
                     error: function(xhr, status, errorThrown) {
                         var errorMessage = 'AJAX error: ';
@@ -877,6 +881,7 @@
                         resolve({
                             id: toolCall.id,
                             name: toolName,
+                            input: toolCall.arguments,
                             result: { error: errorMessage },
                             success: false
                         });
@@ -951,6 +956,7 @@
                 var skippedResult = {
                     id: action.id,
                     name: action.tool,
+                    input: action.arguments,
                     result: { skipped: true, message: 'User declined to execute this action' },
                     success: false
                 };
@@ -979,6 +985,7 @@
                     return {
                         id: action.id,
                         name: action.tool,
+                        input: action.arguments,
                         result: { skipped: true, message: 'User declined to execute this action' },
                         success: false
                     };
@@ -1087,12 +1094,52 @@
                     resultStr = result.result || '(no result data)';
                 }
 
+                var inputHtml = '';
+                if (!result.success && result.input) {
+                    var truncatedInput = {};
+                    var maxValueLength = 500;
+                    for (var key in result.input) {
+                        if (result.input.hasOwnProperty(key)) {
+                            var val = result.input[key];
+                            if (typeof val === 'string' && val.length > maxValueLength) {
+                                truncatedInput[key] = val.substring(0, maxValueLength) + '... (' + val.length + ' chars total)';
+                            } else if (Array.isArray(val)) {
+                                truncatedInput[key] = val.map(function(item) {
+                                    if (typeof item === 'string' && item.length > maxValueLength) {
+                                        return item.substring(0, maxValueLength) + '... (' + item.length + ' chars total)';
+                                    } else if (typeof item === 'object' && item !== null) {
+                                        var truncatedItem = {};
+                                        for (var itemKey in item) {
+                                            if (item.hasOwnProperty(itemKey)) {
+                                                var itemVal = item[itemKey];
+                                                if (typeof itemVal === 'string' && itemVal.length > maxValueLength) {
+                                                    truncatedItem[itemKey] = itemVal.substring(0, maxValueLength) + '... (' + itemVal.length + ' chars total)';
+                                                } else {
+                                                    truncatedItem[itemKey] = itemVal;
+                                                }
+                                            }
+                                        }
+                                        return truncatedItem;
+                                    }
+                                    return item;
+                                });
+                            } else {
+                                truncatedInput[key] = val;
+                            }
+                        }
+                    }
+                    var inputStr = JSON.stringify(truncatedInput, null, 2);
+                    inputHtml = '<div class="ai-tool-input-label">Input parameters:</div>' +
+                        '<pre class="ai-tool-input">' + $('<div>').text(inputStr).html() + '</pre>';
+                }
+
                 var content = '<div class="ai-tool-result ai-tool-result-' + statusClass + '">' +
                     '<div class="ai-tool-header">' +
                     '<span class="ai-tool-toggle">&#9654;</span>' +
                     '<span class="ai-tool-icon">' + statusIcon + '</span>' +
                     '<span class="ai-tool-name">' + result.name + '</span>' +
                     '</div>' +
+                    inputHtml +
                     '<pre class="ai-tool-output">' + $('<div>').text(resultStr).html() + '</pre>' +
                     '</div>';
 

@@ -299,6 +299,35 @@
     display: block;
 }
 
+.ai-tool-input-label {
+    color: #b32d2e;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 6px;
+    display: none;
+}
+
+.ai-tool-result.expanded .ai-tool-input-label {
+    display: block;
+}
+
+.ai-tool-input {
+    background: #2c1810;
+    color: #f0f0f1;
+    padding: 8px;
+    border-radius: 3px;
+    margin-top: 4px;
+    font-size: 11px;
+    max-height: 150px;
+    overflow: auto;
+    font-family: Consolas, Monaco, monospace;
+    display: none;
+}
+
+.ai-tool-result.expanded .ai-tool-input {
+    display: block;
+}
+
 /* Pending actions */
 #ai-assistant-pending-actions {
     background: #fff8e5;
