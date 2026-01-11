@@ -387,17 +387,6 @@ Always explain what you're about to do before using tools.`;
                     }
                 },
                 {
-                    name: 'create_directory',
-                    description: 'Create a new directory within wp-content',
-                    input_schema: {
-                        type: 'object',
-                        properties: {
-                            path: { type: 'string', description: 'Relative path from wp-content' }
-                        },
-                        required: ['path']
-                    }
-                },
-                {
                     name: 'search_files',
                     description: 'Search for files matching a glob pattern within wp-content',
                     input_schema: {
@@ -433,84 +422,14 @@ Always explain what you're about to do before using tools.`;
                     }
                 },
                 {
-                    name: 'db_insert',
-                    description: 'Insert a new row into a WordPress database table',
-                    input_schema: {
-                        type: 'object',
-                        properties: {
-                            table: { type: 'string', description: 'Table name without prefix' },
-                            data: { type: 'object', description: 'Key-value pairs to insert' }
-                        },
-                        required: ['table', 'data']
-                    }
-                },
-                {
-                    name: 'db_update',
-                    description: 'Update rows in a WordPress database table',
-                    input_schema: {
-                        type: 'object',
-                        properties: {
-                            table: { type: 'string', description: 'Table name without prefix' },
-                            data: { type: 'object', description: 'Key-value pairs to update' },
-                            where: { type: 'object', description: 'WHERE clause conditions' }
-                        },
-                        required: ['table', 'data', 'where']
-                    }
-                },
-                {
-                    name: 'db_delete',
-                    description: 'Delete rows from a WordPress database table',
-                    input_schema: {
-                        type: 'object',
-                        properties: {
-                            table: { type: 'string', description: 'Table name without prefix' },
-                            where: { type: 'object', description: 'WHERE clause conditions' }
-                        },
-                        required: ['table', 'where']
-                    }
-                },
-                {
                     name: 'get_plugins',
                     description: 'List all installed WordPress plugins with their status',
                     input_schema: { type: 'object', properties: {} }
                 },
                 {
-                    name: 'activate_plugin',
-                    description: 'Activate a WordPress plugin',
-                    input_schema: {
-                        type: 'object',
-                        properties: {
-                            plugin: { type: 'string', description: 'Plugin file path (e.g., "hello-dolly/hello.php")' }
-                        },
-                        required: ['plugin']
-                    }
-                },
-                {
-                    name: 'deactivate_plugin',
-                    description: 'Deactivate a WordPress plugin',
-                    input_schema: {
-                        type: 'object',
-                        properties: {
-                            plugin: { type: 'string', description: 'Plugin file path' }
-                        },
-                        required: ['plugin']
-                    }
-                },
-                {
                     name: 'get_themes',
                     description: 'List all installed WordPress themes',
                     input_schema: { type: 'object', properties: {} }
-                },
-                {
-                    name: 'switch_theme',
-                    description: 'Switch to a different WordPress theme',
-                    input_schema: {
-                        type: 'object',
-                        properties: {
-                            theme: { type: 'string', description: 'Theme slug (directory name)' }
-                        },
-                        required: ['theme']
-                    }
                 },
                 {
                     name: 'run_php',
