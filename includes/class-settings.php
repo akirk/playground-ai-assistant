@@ -18,7 +18,7 @@ class Settings {
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_ajax_ai_assistant_save_model', [$this, 'ajax_save_model']);
         add_action('load-tools_page_ai-conversations', [$this, 'add_help_tabs']);
-        add_action('load-settings_page_ai-conversations-settings', [$this, 'add_help_tabs']);
+        add_action('load-settings_page_ai-assistant-settings', [$this, 'add_help_tabs']);
     }
 
     /**
@@ -92,10 +92,10 @@ class Settings {
 
         // Settings under Settings menu
         add_options_page(
-            __('AI Conversations Settings', 'ai-assistant'),
-            __('AI Conversations', 'ai-assistant'),
+            __('AI Assistant Settings', 'ai-assistant'),
+            __('AI Assistant', 'ai-assistant'),
             'manage_options',
-            'ai-conversations-settings',
+            'ai-assistant-settings',
             [$this, 'render_settings_page']
         );
     }
@@ -156,7 +156,7 @@ class Settings {
 
         $screen->set_help_sidebar(
             '<p><strong>' . __('For more information:', 'ai-assistant') . '</strong></p>'
-            . '<p><a href="' . esc_url(admin_url('options-general.php?page=ai-conversations-settings')) . '">' . __('Plugin Settings', 'ai-assistant') . '</a></p>'
+            . '<p><a href="' . esc_url(admin_url('options-general.php?page=ai-assistant-settings')) . '">' . __('Plugin Settings', 'ai-assistant') . '</a></p>'
         );
     }
 
@@ -165,7 +165,7 @@ class Settings {
      */
     public function render_chat_page() {
         $conversation_id = isset($_GET['conversation']) ? intval($_GET['conversation']) : 0;
-        $settings_url = admin_url('options-general.php?page=ai-conversations-settings');
+        $settings_url = admin_url('options-general.php?page=ai-assistant-settings');
         ?>
         <div class="wrap ai-assistant-page">
             <div class="ai-chat-layout">
@@ -506,14 +506,14 @@ class Settings {
             'ai_assistant_provider_section',
             __('LLM Provider Settings', 'ai-assistant'),
             [$this, 'provider_section_callback'],
-            'ai-conversations-settings'
+            'ai-assistant-settings'
         );
 
         add_settings_field(
             'ai_assistant_provider',
             __('Provider', 'ai-assistant'),
             [$this, 'provider_field_callback'],
-            'ai-conversations-settings',
+            'ai-assistant-settings',
             'ai_assistant_provider_section'
         );
 
@@ -521,7 +521,7 @@ class Settings {
             'ai_assistant_anthropic_api_key',
             __('Anthropic API Key', 'ai-assistant'),
             [$this, 'anthropic_api_key_field_callback'],
-            'ai-conversations-settings',
+            'ai-assistant-settings',
             'ai_assistant_provider_section'
         );
 
@@ -529,7 +529,7 @@ class Settings {
             'ai_assistant_openai_api_key',
             __('OpenAI API Key', 'ai-assistant'),
             [$this, 'openai_api_key_field_callback'],
-            'ai-conversations-settings',
+            'ai-assistant-settings',
             'ai_assistant_provider_section'
         );
 
@@ -537,7 +537,7 @@ class Settings {
             'ai_assistant_local_endpoint',
             __('Local LLM Endpoint', 'ai-assistant'),
             [$this, 'local_endpoint_field_callback'],
-            'ai-conversations-settings',
+            'ai-assistant-settings',
             'ai_assistant_provider_section'
         );
 
@@ -545,7 +545,7 @@ class Settings {
             'ai_assistant_model',
             __('Model', 'ai-assistant'),
             [$this, 'model_field_callback'],
-            'ai-conversations-settings',
+            'ai-assistant-settings',
             'ai_assistant_provider_section'
         );
 
@@ -554,14 +554,14 @@ class Settings {
             'ai_assistant_permissions_section',
             __('Role Permissions', 'ai-assistant'),
             [$this, 'permissions_section_callback'],
-            'ai-conversations-settings'
+            'ai-assistant-settings'
         );
 
         add_settings_field(
             'ai_assistant_role_permissions',
             __('Access Levels', 'ai-assistant'),
             [$this, 'permissions_field_callback'],
-            'ai-conversations-settings',
+            'ai-assistant-settings',
             'ai_assistant_permissions_section'
         );
 
@@ -570,14 +570,14 @@ class Settings {
             'ai_assistant_display_section',
             __('Display Settings', 'ai-assistant'),
             [$this, 'display_section_callback'],
-            'ai-conversations-settings'
+            'ai-assistant-settings'
         );
 
         add_settings_field(
             'ai_assistant_show_on_frontend',
             __('Frontend Access', 'ai-assistant'),
             [$this, 'frontend_field_callback'],
-            'ai-conversations-settings',
+            'ai-assistant-settings',
             'ai_assistant_display_section'
         );
     }
@@ -813,7 +813,7 @@ class Settings {
             <form action="options.php" method="post">
                 <?php
                 settings_fields('ai_assistant_settings');
-                do_settings_sections('ai-conversations-settings');
+                do_settings_sections('ai-assistant-settings');
                 submit_button();
                 ?>
             </form>

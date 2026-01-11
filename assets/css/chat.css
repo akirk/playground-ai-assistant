@@ -30,6 +30,21 @@
     background: #fff;
     overflow: hidden;
     transition: height 0.3s ease;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.4;
+    color: #1d2327;
+}
+
+.ai-assistant-chat-container a {
+    color: #2271b1;
+    text-decoration: none;
+}
+
+.ai-assistant-chat-container a:hover {
+    color: #135e96;
+    text-decoration: underline;
 }
 
 .ai-assistant-chat-container.expanded {
@@ -41,10 +56,14 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: 6px 14px;
     background: #f6f7f7;
     border-bottom: 1px solid #c3c4c7;
     flex-shrink: 0;
+}
+
+.wp-admin .ai-assistant-header {
+    padding: 0 14px;
 }
 
 .ai-assistant-header h2 {
@@ -122,6 +141,11 @@
     flex-direction: column;
     gap: 10px;
     background: #f0f0f1;
+}
+
+/* Hide messages when pending new chat (undo available), except welcome and model info */
+#ai-assistant-messages.ai-pending-new-chat > *:not(.ai-welcome-message):not(.ai-model-info) {
+    display: none;
 }
 
 /* Message bubbles */
@@ -462,7 +486,9 @@
     padding: 8px 10px;
     border: 1px solid #8c8f94;
     border-radius: 4px;
+    font-family: inherit;
     font-size: 13px;
+    font-weight: 400;
     resize: none;
     min-height: 20px;
     max-height: 60px;
@@ -584,10 +610,11 @@ body:not(.admin-bar) .ai-assistant-standalone-wrap {
     top: 0;
 }
 
-/* The button itself - matches .show-settings button */
+/* The button itself - matches .show-settings button exactly */
 .ai-assistant-standalone-trigger button {
     display: block;
-    padding: 6px 10px;
+    padding: 3px 6px 3px 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
     font-size: 13px;
     line-height: 1.7;
     color: #646970;
@@ -610,6 +637,19 @@ body:not(.admin-bar) .ai-assistant-standalone-wrap {
     border-color: #2271b1;
     box-shadow: 0 0 0 1px #2271b1;
     outline: 2px solid transparent;
+}
+
+/* Arrow indicator - matches WordPress screen-meta toggle */
+.ai-assistant-standalone-trigger button::after {
+    content: " \25BC";
+    font-size: 11px;
+    display: inline-block;
+    margin-left: 2px;
+    transform: translateY(-1px);
+}
+
+.ai-assistant-standalone-trigger button[aria-expanded="true"]::after {
+    content: " \25B2";
 }
 
 /* Clearfix for the links container */

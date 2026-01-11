@@ -71,7 +71,7 @@ class Chat_UI {
             'apiKey' => $api_key,
             'model' => get_option('ai_assistant_model', ''),
             'localEndpoint' => get_option('ai_assistant_local_endpoint', 'http://localhost:11434'),
-            'settingsUrl' => admin_url('options-general.php?page=ai-conversations-settings'),
+            'settingsUrl' => admin_url('options-general.php?page=ai-assistant-settings'),
             'systemPrompt' => $settings->get_system_prompt(),
             'strings' => [
                 'placeholder' => __('Ask me anything about your WordPress site...', 'ai-assistant'),
@@ -242,7 +242,7 @@ class Chat_UI {
         $placeholder = esc_attr__('Ask me anything about your WordPress site...', 'ai-assistant');
         $aria_label = esc_attr__('AI Assistant Tab', 'ai-assistant');
         $history_url = esc_url(admin_url('tools.php?page=ai-conversations'));
-        $settings_url = esc_url(admin_url('options-general.php?page=ai-conversations-settings'));
+        $settings_url = esc_url(admin_url('options-general.php?page=ai-assistant-settings'));
 
         return '<div id="ai-assistant-wrap" class="hidden" tabindex="-1" aria-label="' . $aria_label . '">
             <div id="ai-assistant-columns">

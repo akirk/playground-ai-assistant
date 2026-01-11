@@ -21,6 +21,7 @@
         draftHistory: [],
         draftHistoryIndex: -1,
         draftHistoryMax: 50,
+        pendingNewChat: false,
 
         init: function() {
             this.bindEvents();
@@ -97,6 +98,11 @@
             $(document).on('click', '#ai-assistant-new-chat', function(e) {
                 e.preventDefault();
                 self.newChat();
+            });
+
+            $(document).on('click', '#ai-assistant-undo-new-chat', function(e) {
+                e.preventDefault();
+                self.undoNewChat();
             });
 
             $(document).on('click', '#ai-confirm-all', function(e) {
@@ -484,6 +490,21 @@
             var message = $input.val().trim();
 
             if (!message) return;
+
+            // If we have a pending new chat, commit it now
+            if (this.pendingNewChat) {
+                this.messages = [];
+                this.pendingActions = [];
+                this.conversationId = 0;
+                this.conversationTitle = '';
+                this.conversationProvider = aiAssistantConfig.provider;
+                this.conversationModel = aiAssistantConfig.model;
+                this.pendingNewChat = false;
+                $('#ai-assistant-messages').removeClass('ai-pending-new-chat').empty();
+                $('#ai-assistant-pending-actions').empty().hide();
+                $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
+                this.updateSidebarSelection();
+            }
 
             this.addToDraftHistory(message);
             this.addMessage('user', message);
@@ -982,11 +1003,14 @@
             }
         },
 
-        addMessage: function(role, content) {
+        addMessage: function(role, content, extraClass) {
             var $messages = $('#ai-assistant-messages');
             console.log('[AI Assistant] addMessage called, role:', role, '$messages.length:', $messages.length);
 
             var messageClass = 'ai-message ai-message-' + role;
+            if (extraClass) {
+                messageClass += ' ' + extraClass;
+            }
             content = this.formatContent(content);
 
             var $message = $('<div class="' + messageClass + '">' +
@@ -1255,31 +1279,51 @@
         },
 
         newChat: function() {
+            // If there's an existing conversation, just hide it visually (pending new chat)
+            if (this.messages.length > 0 && !this.pendingNewChat) {
+                this.pendingNewChat = true;
+                $('#ai-assistant-messages').addClass('ai-pending-new-chat');
+                $('#ai-assistant-new-chat').text('Undo').attr('id', 'ai-assistant-undo-new-chat');
+                $('#ai-assistant-input').focus();
+                return;
+            }
+
+            // Actually start a new chat
             this.messages = [];
             this.pendingActions = [];
             this.conversationId = 0;
             this.conversationTitle = '';
             this.conversationProvider = aiAssistantConfig.provider;
             this.conversationModel = aiAssistantConfig.model;
+            this.pendingNewChat = false;
             this.updateSendButton();
             this.updateTokenCount();
-            $('#ai-assistant-messages').empty();
+            $('#ai-assistant-messages').removeClass('ai-pending-new-chat').empty();
             $('#ai-assistant-pending-actions').empty().hide();
+            $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
             this.updateSidebarSelection();
             this.loadWelcomeMessage();
+            $('#ai-assistant-input').focus();
+        },
+
+        undoNewChat: function() {
+            this.pendingNewChat = false;
+            $('#ai-assistant-messages').removeClass('ai-pending-new-chat');
+            $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
+            this.scrollToBottom();
             $('#ai-assistant-input').focus();
         },
 
         loadWelcomeMessage: function() {
             var config = aiAssistantConfig;
             if (!config.apiKey && config.provider !== 'local') {
-                this.addMessage('system', 'Welcome! Please configure your API key in [Settings](' + config.settingsUrl + ') to start chatting.');
+                this.addMessage('system', 'Welcome! Please configure your API key in [Settings](' + config.settingsUrl + ') to start chatting.', 'ai-welcome-message');
             } else {
                 var providerName = config.provider === 'anthropic' ? 'Anthropic' :
                                    config.provider === 'openai' ? 'OpenAI' : 'Local LLM';
                 var modelInfo = config.model ? ' (' + config.model + ')' : '';
-                this.addMessage('assistant', 'Hello! I\'m your Playground AI Assistant. I can help you manage your WordPress installation - read and modify files, manage plugins, query the database, and more. What would you like to do?');
-                this.addMessage('system', 'You\'re chatting with **' + providerName + '**' + modelInfo);
+                this.addMessage('assistant', 'Hello! I\'m your Playground AI Assistant. I can help you manage your WordPress installation - read and modify files, manage plugins, query the database, and more. What would you like to do?', 'ai-welcome-message');
+                this.addMessage('system', 'You\'re chatting with **' + providerName + '**' + modelInfo, 'ai-model-info');
             }
         },
 
