@@ -127,6 +127,9 @@ class Settings {
 
                 <!-- Main Chat Area -->
                 <div class="ai-chat-main">
+                    <button type="button" class="ai-sidebar-toggle" id="ai-sidebar-toggle">
+                        <span class="dashicons dashicons-menu"></span> <?php esc_html_e('Chats', 'ai-assistant'); ?>
+                    </button>
                     <div class="ai-assistant-chat-container">
                         <div id="ai-assistant-messages"></div>
                         <div id="ai-assistant-loading" style="display: none;">
@@ -147,6 +150,17 @@ class Settings {
                 conversationId: <?php echo intval($conversation_id); ?>,
                 isFullPage: true
             };
+            jQuery(document).ready(function($) {
+                $('#ai-sidebar-toggle').on('click', function() {
+                    $('.ai-chat-sidebar').toggleClass('mobile-visible');
+                });
+                // Hide sidebar when conversation is selected on mobile
+                $(document).on('click', '.ai-conv-item', function() {
+                    if (window.innerWidth <= 782) {
+                        $('.ai-chat-sidebar').removeClass('mobile-visible');
+                    }
+                });
+            });
         </script>
         <style>
             .ai-assistant-page {
@@ -349,6 +363,52 @@ class Settings {
             }
             .ai-message-user code {
                 background: rgba(255,255,255,0.2);
+            }
+
+            /* Mobile toggle button */
+            .ai-sidebar-toggle {
+                display: none;
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                z-index: 10;
+                background: #f6f7f7;
+                border: 1px solid #c3c4c7;
+                border-radius: 4px;
+                padding: 8px 12px;
+                cursor: pointer;
+                font-size: 13px;
+            }
+            .ai-sidebar-toggle:hover {
+                background: #e0e0e0;
+            }
+
+            /* Mobile styles */
+            @media screen and (max-width: 782px) {
+                .ai-chat-layout {
+                    flex-direction: column;
+                    height: calc(100vh - 60px);
+                }
+                .ai-chat-sidebar {
+                    width: 100%;
+                    min-width: 100%;
+                    max-height: 40vh;
+                    border-right: none;
+                    border-bottom: 1px solid #c3c4c7;
+                    display: none;
+                }
+                .ai-chat-sidebar.mobile-visible {
+                    display: flex;
+                }
+                .ai-sidebar-toggle {
+                    display: block;
+                }
+                .ai-chat-main {
+                    position: relative;
+                }
+                .ai-assistant-page {
+                    margin-right: 0;
+                }
             }
         </style>
         <?php
