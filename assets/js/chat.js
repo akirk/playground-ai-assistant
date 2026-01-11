@@ -1182,7 +1182,8 @@ Always explain what you're about to do before using tools.`;
 
                 if (preview) {
                     var previewLabel = preview.isEdit ? 'Show changes' : 'Show content';
-                    var lineCount = (preview.content.match(/\n/g) || []).length + 1;
+                    var contentStr = typeof preview.content === 'string' ? preview.content : String(preview.content || '');
+                    var lineCount = (contentStr.match(/\n/g) || []).length + 1;
                     previewHtml = '<div class="ai-action-preview">' +
                         '<button type="button" class="ai-action-preview-toggle">' +
                         '<span class="dashicons dashicons-arrow-right-alt2"></span>' +
@@ -1219,9 +1220,9 @@ Always explain what you're about to do before using tools.`;
                 case 'write_file':
                 case 'append_file':
                     if (args.content) {
-                        content = args.content;
+                        content = typeof args.content === 'string' ? args.content : JSON.stringify(args.content, null, 2);
                         if (content.length > 2000) {
-                            content = content.substring(0, 2000) + '\n... (' + (args.content.length - 2000) + ' more characters)';
+                            content = content.substring(0, 2000) + '\n... (' + (content.length - 2000) + ' more characters)';
                         }
                     }
                     break;
@@ -1233,8 +1234,9 @@ Always explain what you're about to do before using tools.`;
                             if (i > 0) diffLines.push('');
                             diffLines.push('--- Edit ' + (i + 1) + ' ---');
 
-                            // Generate a smart diff showing only actual changes
-                            var diff = self.generateSmartDiff(edit.search || '', edit.replace || '');
+                            var search = typeof edit.search === 'string' ? edit.search : String(edit.search || '');
+                            var replace = typeof edit.replace === 'string' ? edit.replace : String(edit.replace || '');
+                            var diff = self.generateSmartDiff(search, replace);
                             diffLines = diffLines.concat(diff);
                         });
                         content = diffLines.join('\n');
@@ -1248,7 +1250,7 @@ Always explain what you're about to do before using tools.`;
                     break;
                 case 'run_php':
                     if (args.code) {
-                        content = args.code;
+                        content = typeof args.code === 'string' ? args.code : JSON.stringify(args.code, null, 2);
                     }
                     break;
             }
@@ -1366,8 +1368,8 @@ Always explain what you're about to do before using tools.`;
                 var providerName = config.provider === 'anthropic' ? 'Anthropic' :
                                    config.provider === 'openai' ? 'OpenAI' : 'Local LLM';
                 var modelInfo = config.model ? ' (' + config.model + ')' : '';
-                this.addMessage('system', 'Connected to **' + providerName + '**' + modelInfo);
                 this.addMessage('assistant', 'Hello! I\'m your Playground AI Assistant. I can help you manage your WordPress installation - read and modify files, manage plugins, query the database, and more. What would you like to do?');
+                this.addMessage('system', 'You\'re chatting with **' + providerName + '**' + modelInfo);
             }
         },
 
@@ -1725,16 +1727,16 @@ Always explain what you're about to do before using tools.`;
                         self.conversationModel = convModel;
                         self.updateSendButton();
 
-                        // Show conversation's provider/model info
+                        self.rebuildMessagesUI();
+
+                        // Show conversation's provider/model info at the bottom
                         if (response.data.provider || response.data.model) {
                             var providerName = convProvider === 'anthropic' ? 'Anthropic' :
                                                convProvider === 'openai' ? 'OpenAI' :
                                                convProvider === 'local' ? 'Local LLM' : convProvider;
                             var modelInfo = convModel ? ' (' + convModel + ')' : '';
-                            self.addMessage('system', 'Restored conversation from **' + providerName + '**' + modelInfo);
+                            self.addMessage('system', 'You\'re chatting with **' + providerName + '**' + modelInfo);
                         }
-
-                        self.rebuildMessagesUI();
                         self.updateSidebarSelection();
                         $('#ai-assistant-input').focus();
 

@@ -17,6 +17,7 @@ class Settings {
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_ajax_ai_assistant_save_model', [$this, 'ajax_save_model']);
+        add_action('load-tools_page_ai-assistant', [$this, 'add_help_tabs']);
     }
 
     /**
@@ -95,6 +96,45 @@ class Settings {
             'manage_options',
             'ai-assistant-settings',
             [$this, 'render_settings_page']
+        );
+    }
+
+    /**
+     * Add help tabs to the chat page
+     */
+    public function add_help_tabs() {
+        $screen = get_current_screen();
+
+        $screen->add_help_tab([
+            'id'      => 'ai-assistant-overview',
+            'title'   => __('Overview', 'ai-assistant'),
+            'content' => '<p>' . __('The AI Assistant helps you manage your WordPress site through natural language conversation. Ask questions, request changes, or get help with content.', 'ai-assistant') . '</p>'
+                       . '<p>' . __('Your conversation history is saved automatically and can be accessed from the sidebar.', 'ai-assistant') . '</p>',
+        ]);
+
+        $screen->add_help_tab([
+            'id'      => 'ai-assistant-capabilities',
+            'title'   => __('Capabilities', 'ai-assistant'),
+            'content' => '<p>' . __('The AI Assistant can help you with:', 'ai-assistant') . '</p>'
+                       . '<ul>'
+                       . '<li>' . __('<strong>Content</strong> - Create, edit, and manage posts and pages', 'ai-assistant') . '</li>'
+                       . '<li>' . __('<strong>Media</strong> - Upload and organize images and files', 'ai-assistant') . '</li>'
+                       . '<li>' . __('<strong>Settings</strong> - View and modify site configuration', 'ai-assistant') . '</li>'
+                       . '<li>' . __('<strong>Plugins</strong> - Get information about installed plugins', 'ai-assistant') . '</li>'
+                       . '<li>' . __('<strong>Database</strong> - Query data (read-only unless you have full access)', 'ai-assistant') . '</li>'
+                       . '</ul>',
+        ]);
+
+        $screen->add_help_tab([
+            'id'      => 'ai-assistant-yolo',
+            'title'   => __('YOLO Mode', 'ai-assistant'),
+            'content' => '<p>' . __('When YOLO Mode is enabled, the assistant will execute actions without asking for confirmation. Use with caution.', 'ai-assistant') . '</p>'
+                       . '<p>' . __('With YOLO Mode disabled (default), you will be prompted to approve any changes before they are made.', 'ai-assistant') . '</p>',
+        ]);
+
+        $screen->set_help_sidebar(
+            '<p><strong>' . __('For more information:', 'ai-assistant') . '</strong></p>'
+            . '<p><a href="' . esc_url(admin_url('options-general.php?page=ai-assistant-settings')) . '">' . __('Plugin Settings', 'ai-assistant') . '</a></p>'
         );
     }
 
