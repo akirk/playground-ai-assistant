@@ -719,7 +719,7 @@ Always explain what you're about to do before using tools.`;
 
         processToolCalls: function(toolCalls, provider) {
             var self = this;
-            var destructiveTools = ['write_file', 'edit_file', 'delete_file', 'create_directory', 'db_insert', 'db_update', 'db_delete', 'activate_plugin', 'deactivate_plugin', 'switch_theme', 'run_php'];
+            var destructiveTools = ['write_file', 'edit_file', 'delete_file', 'run_php'];
 
             // YOLO mode: execute everything immediately
             if (this.yoloMode) {
@@ -957,22 +957,8 @@ Always explain what you're about to do before using tools.`;
                     return 'Edit file: ' + (args.path || 'unknown') + ' (' + editCount + ' change' + (editCount !== 1 ? 's' : '') + ')';
                 case 'delete_file':
                     return 'Delete file: ' + (args.path || 'unknown');
-                case 'create_directory':
-                    return 'Create directory: ' + (args.path || 'unknown');
-                case 'db_insert':
-                    return 'Insert row into table: ' + (args.table || 'unknown');
-                case 'db_update':
-                    return 'Update rows in table: ' + (args.table || 'unknown');
-                case 'db_delete':
-                    return 'Delete rows from table: ' + (args.table || 'unknown');
                 case 'run_php':
                     return 'Run PHP code';
-                case 'activate_plugin':
-                    return 'Activate plugin: ' + (args.plugin || 'unknown');
-                case 'deactivate_plugin':
-                    return 'Deactivate plugin: ' + (args.plugin || 'unknown');
-                case 'switch_theme':
-                    return 'Switch theme to: ' + (args.theme || 'unknown');
                 default:
                     return 'Execute: ' + toolName;
             }
@@ -1151,12 +1137,6 @@ Always explain what you're about to do before using tools.`;
                             diffLines = diffLines.concat(diff);
                         });
                         content = diffLines.join('\n');
-                    }
-                    break;
-                case 'db_insert':
-                case 'db_update':
-                    if (args.data) {
-                        content = JSON.stringify(args.data, null, 2);
                     }
                     break;
                 case 'run_php':

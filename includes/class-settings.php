@@ -125,6 +125,19 @@ class Settings {
                        . '</ul>',
         ]);
 
+        $tools = new Tools();
+        $tools_list = '<ul>';
+        foreach ($tools->get_all_tools() as $tool) {
+            $tools_list .= '<li><code>' . esc_html($tool['name']) . '</code> - ' . esc_html($tool['description']) . '</li>';
+        }
+        $tools_list .= '</ul>';
+
+        $screen->add_help_tab([
+            'id'      => 'ai-assistant-tools',
+            'title'   => __('Available Tools', 'ai-assistant'),
+            'content' => '<p>' . __('The AI Assistant has access to the following tools:', 'ai-assistant') . '</p>' . $tools_list,
+        ]);
+
         $screen->add_help_tab([
             'id'      => 'ai-assistant-yolo',
             'title'   => __('YOLO Mode', 'ai-assistant'),
