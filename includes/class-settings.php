@@ -17,7 +17,7 @@ class Settings {
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_ajax_ai_assistant_save_model', [$this, 'ajax_save_model']);
-        add_action('load-tools_page_ai-assistant', [$this, 'add_help_tabs']);
+        add_action('load-tools_page_ai-conversations', [$this, 'add_help_tabs']);
     }
 
     /**
@@ -82,19 +82,19 @@ class Settings {
     public function add_settings_page() {
         // Add to Tools menu
         add_management_page(
-            __('AI Assistant', 'ai-assistant'),
-            __('AI Assistant', 'ai-assistant'),
+            __('AI Conversations', 'ai-assistant'),
+            __('AI Conversations', 'ai-assistant'),
             'edit_posts',
-            'ai-assistant',
+            'ai-conversations',
             [$this, 'render_chat_page']
         );
 
         // Settings under Settings menu
         add_options_page(
-            __('AI Assistant Settings', 'ai-assistant'),
-            __('AI Assistant', 'ai-assistant'),
+            __('AI Conversations Settings', 'ai-assistant'),
+            __('AI Conversations', 'ai-assistant'),
             'manage_options',
-            'ai-assistant-settings',
+            'ai-conversations-settings',
             [$this, 'render_settings_page']
         );
     }
@@ -145,9 +145,17 @@ class Settings {
                        . '<p>' . __('With YOLO Mode disabled (default), you will be prompted to approve any changes before they are made.', 'ai-assistant') . '</p>',
         ]);
 
+        $system_prompt = $this->get_system_prompt();
+        $screen->add_help_tab([
+            'id'      => 'ai-assistant-system-prompt',
+            'title'   => __('System Prompt', 'ai-assistant'),
+            'content' => '<p>' . __('The following system prompt is sent to the AI with each conversation:', 'ai-assistant') . '</p>'
+                       . '<pre style="white-space: pre-wrap; background: #f6f7f7; padding: 10px; border-radius: 4px; max-height: 400px; overflow-y: auto;">' . esc_html($system_prompt) . '</pre>',
+        ]);
+
         $screen->set_help_sidebar(
             '<p><strong>' . __('For more information:', 'ai-assistant') . '</strong></p>'
-            . '<p><a href="' . esc_url(admin_url('options-general.php?page=ai-assistant-settings')) . '">' . __('Plugin Settings', 'ai-assistant') . '</a></p>'
+            . '<p><a href="' . esc_url(admin_url('options-general.php?page=ai-conversations-settings')) . '">' . __('Plugin Settings', 'ai-assistant') . '</a></p>'
         );
     }
 
@@ -156,7 +164,7 @@ class Settings {
      */
     public function render_chat_page() {
         $conversation_id = isset($_GET['conversation']) ? intval($_GET['conversation']) : 0;
-        $settings_url = admin_url('options-general.php?page=ai-assistant-settings');
+        $settings_url = admin_url('options-general.php?page=ai-conversations-settings');
         ?>
         <div class="wrap ai-assistant-page">
             <div class="ai-chat-layout">
@@ -494,14 +502,14 @@ class Settings {
             'ai_assistant_provider_section',
             __('LLM Provider Settings', 'ai-assistant'),
             [$this, 'provider_section_callback'],
-            'ai-assistant-settings'
+            'ai-conversations-settings'
         );
 
         add_settings_field(
             'ai_assistant_provider',
             __('Provider', 'ai-assistant'),
             [$this, 'provider_field_callback'],
-            'ai-assistant-settings',
+            'ai-conversations-settings',
             'ai_assistant_provider_section'
         );
 
@@ -509,7 +517,7 @@ class Settings {
             'ai_assistant_anthropic_api_key',
             __('Anthropic API Key', 'ai-assistant'),
             [$this, 'anthropic_api_key_field_callback'],
-            'ai-assistant-settings',
+            'ai-conversations-settings',
             'ai_assistant_provider_section'
         );
 
@@ -517,7 +525,7 @@ class Settings {
             'ai_assistant_openai_api_key',
             __('OpenAI API Key', 'ai-assistant'),
             [$this, 'openai_api_key_field_callback'],
-            'ai-assistant-settings',
+            'ai-conversations-settings',
             'ai_assistant_provider_section'
         );
 
@@ -525,7 +533,7 @@ class Settings {
             'ai_assistant_local_endpoint',
             __('Local LLM Endpoint', 'ai-assistant'),
             [$this, 'local_endpoint_field_callback'],
-            'ai-assistant-settings',
+            'ai-conversations-settings',
             'ai_assistant_provider_section'
         );
 
@@ -533,7 +541,7 @@ class Settings {
             'ai_assistant_model',
             __('Model', 'ai-assistant'),
             [$this, 'model_field_callback'],
-            'ai-assistant-settings',
+            'ai-conversations-settings',
             'ai_assistant_provider_section'
         );
 
@@ -542,14 +550,14 @@ class Settings {
             'ai_assistant_permissions_section',
             __('Role Permissions', 'ai-assistant'),
             [$this, 'permissions_section_callback'],
-            'ai-assistant-settings'
+            'ai-conversations-settings'
         );
 
         add_settings_field(
             'ai_assistant_role_permissions',
             __('Access Levels', 'ai-assistant'),
             [$this, 'permissions_field_callback'],
-            'ai-assistant-settings',
+            'ai-conversations-settings',
             'ai_assistant_permissions_section'
         );
     }
@@ -759,7 +767,7 @@ class Settings {
             <form action="options.php" method="post">
                 <?php
                 settings_fields('ai_assistant_settings');
-                do_settings_sections('ai-assistant-settings');
+                do_settings_sections('ai-conversations-settings');
                 submit_button();
                 ?>
             </form>
@@ -1267,5 +1275,45 @@ class Settings {
         }
 
         return $highest_level;
+    }
+
+    /**
+     * Get the system prompt for the AI assistant
+     */
+    public function get_system_prompt() {
+        $wp_info = [
+            'siteUrl' => get_site_url(),
+            'wpVersion' => get_bloginfo('version'),
+            'theme' => get_template(),
+            'phpVersion' => phpversion(),
+        ];
+
+        return "You are the Playground AI Assistant integrated into WordPress. You help users manage and modify their WordPress installation.
+
+Current WordPress Information:
+- Site URL: {$wp_info['siteUrl']}
+- WordPress Version: {$wp_info['wpVersion']}
+- Active Theme: {$wp_info['theme']}
+- PHP Version: {$wp_info['phpVersion']}
+
+You have access to tools that let you interact with the WordPress filesystem and database. All file paths are relative to wp-content/.
+
+WORDPRESS ABILITIES API:
+For common WordPress operations (posts, options, queries, users), use run_php with standard WordPress functions.
+Use the Abilities API (list_abilities, get_ability, execute_ability) when:
+- The task involves plugin-specific functionality (e.g., WooCommerce, forms, SEO plugins)
+- The user asks about what actions are available
+- You're unsure how to accomplish something with standard WordPress functions
+Abilities expose plugin/theme capabilities in a standardized way.
+
+FILE EDITING RULES:
+- Use write_file ONLY for creating NEW files
+- Use edit_file for modifying EXISTING files - it uses search/replace operations which is more efficient and easier to review
+- The edit_file tool takes an array of {search, replace} pairs - each search string must be unique in the file
+- If an edit_file operation fails (string not found or not unique), use read_file to see the current content and retry
+
+IMPORTANT: For any destructive operations (file deletion, database modification, file overwriting), the user will be asked to confirm before execution. Be clear about what changes you're proposing.
+
+Always explain what you're about to do before using tools.";
     }
 }

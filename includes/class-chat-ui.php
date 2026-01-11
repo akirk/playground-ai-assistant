@@ -58,13 +58,8 @@ class Chat_UI {
             'apiKey' => $api_key,
             'model' => get_option('ai_assistant_model', ''),
             'localEndpoint' => get_option('ai_assistant_local_endpoint', 'http://localhost:11434'),
-            'settingsUrl' => admin_url('options-general.php?page=ai-assistant-settings'),
-            'wpInfo' => [
-                'siteUrl' => get_site_url(),
-                'wpVersion' => get_bloginfo('version'),
-                'theme' => get_template(),
-                'phpVersion' => phpversion(),
-            ],
+            'settingsUrl' => admin_url('options-general.php?page=ai-conversations-settings'),
+            'systemPrompt' => $settings->get_system_prompt(),
             'strings' => [
                 'placeholder' => __('Ask me anything about your WordPress site...', 'ai-assistant'),
                 'send' => __('Send', 'ai-assistant'),
@@ -89,7 +84,7 @@ class Chat_UI {
 
         // Don't render on the dedicated AI Assistant page (it has its own UI)
         $screen = get_current_screen();
-        if ($screen && $screen->id === 'tools_page_ai-assistant') {
+        if ($screen && $screen->id === 'tools_page_ai-conversations') {
             return;
         }
         ?>
@@ -175,8 +170,8 @@ class Chat_UI {
         $send = esc_html__('Send', 'ai-assistant');
         $placeholder = esc_attr__('Ask me anything about your WordPress site...', 'ai-assistant');
         $aria_label = esc_attr__('AI Assistant Tab', 'ai-assistant');
-        $history_url = esc_url(admin_url('tools.php?page=ai-assistant'));
-        $settings_url = esc_url(admin_url('options-general.php?page=ai-assistant-settings'));
+        $history_url = esc_url(admin_url('tools.php?page=ai-conversations'));
+        $settings_url = esc_url(admin_url('options-general.php?page=ai-conversations-settings'));
 
         return '<div id="ai-assistant-wrap" class="hidden" tabindex="-1" aria-label="' . $aria_label . '">
             <div id="ai-assistant-columns">

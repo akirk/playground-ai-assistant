@@ -294,34 +294,11 @@
         },
 
         buildSystemPrompt: function() {
-            var wpInfo = aiAssistantConfig.wpInfo || {};
-            this.systemPrompt = `You are the Playground AI Assistant integrated into WordPress. You help users manage and modify their WordPress installation.
-
-Current WordPress Information:
-- Site URL: ${wpInfo.siteUrl || 'Unknown'}
-- WordPress Version: ${wpInfo.wpVersion || 'Unknown'}
-- Active Theme: ${wpInfo.theme || 'Unknown'}
-- PHP Version: ${wpInfo.phpVersion || 'Unknown'}
-
-You have access to tools that let you interact with the WordPress filesystem and database. All file paths are relative to wp-content/.
-
-WORDPRESS ABILITIES API:
-For common WordPress operations (posts, options, queries, users), use run_php with standard WordPress functions.
-Use the Abilities API (list_abilities, get_ability, execute_ability) when:
-- The task involves plugin-specific functionality (e.g., WooCommerce, forms, SEO plugins)
-- The user asks about what actions are available
-- You're unsure how to accomplish something with standard WordPress functions
-Abilities expose plugin/theme capabilities in a standardized way.
-
-FILE EDITING RULES:
-- Use write_file ONLY for creating NEW files
-- Use edit_file for modifying EXISTING files - it uses search/replace operations which is more efficient and easier to review
-- The edit_file tool takes an array of {search, replace} pairs - each search string must be unique in the file
-- If an edit_file operation fails (string not found or not unique), use read_file to see the current content and retry
-
-IMPORTANT: For any destructive operations (file deletion, database modification, file overwriting), the user will be asked to confirm before execution. Be clear about what changes you're proposing.
-
-Always explain what you're about to do before using tools.`;
+            this.systemPrompt = aiAssistantConfig.systemPrompt || '';
+            if (!this.systemPrompt) {
+                console.error('[AI Assistant] No system prompt provided');
+                this.addMessage('error', 'Configuration error: system prompt not available. Please check plugin settings.');
+            }
         },
 
         getTools: function() {
@@ -1442,7 +1419,7 @@ Always explain what you're about to do before using tools.`;
         },
 
         isProviderConfigured: function() {
-            return !!(this.conversationProvider && this.conversationModel);
+            return !!(this.conversationProvider && this.conversationModel && this.systemPrompt);
         },
 
         updateSendButton: function() {
