@@ -11,10 +11,13 @@
         systemPrompt: '',
         isFullPage: false,
         autoSave: true,
+        draftStorageKey: 'aiAssistant_draftMessage',
+        conversationPreloaded: false,
 
         init: function() {
             this.bindEvents();
             this.buildSystemPrompt();
+            this.restoreDraft();
 
             // Check if we're on the full page and have a conversation to load
             if (typeof aiAssistantPageConfig !== 'undefined') {
@@ -26,9 +29,11 @@
                 if (aiAssistantPageConfig.conversationId > 0) {
                     this.loadConversation(aiAssistantPageConfig.conversationId);
                 } else {
-                    this.loadWelcomeMessage();
+                    // Load most recent conversation on full page
+                    this.loadMostRecentConversation();
                 }
             } else {
+                // Screen-meta mode: show welcome initially, load conversation on hover
                 this.loadWelcomeMessage();
             }
         },
@@ -88,6 +93,19 @@
             $(document).on('keydown', function(e) {
                 if (e.which === 27 && self.isOpen) {
                     self.close();
+                }
+            });
+
+            // Save draft on input change
+            $(document).on('input', '#ai-assistant-input', function() {
+                self.saveDraft();
+            });
+
+            // Preload most recent conversation on hover (screen-meta mode only)
+            $(document).on('mouseenter', '#ai-assistant-link-wrap', function() {
+                if (!self.isFullPage && !self.conversationPreloaded) {
+                    self.conversationPreloaded = true;
+                    self.loadMostRecentConversation();
                 }
             });
 
@@ -234,6 +252,12 @@
             this.isOpen = true;
             this.scrollToBottom();
             $('#ai-assistant-input').focus();
+
+            // Backup: load most recent conversation if hover didn't trigger
+            if (!this.isFullPage && !this.conversationPreloaded) {
+                this.conversationPreloaded = true;
+                this.loadMostRecentConversation();
+            }
         },
 
         close: function() {
@@ -499,6 +523,7 @@ Always explain what you're about to do before using tools.`;
             this.addMessage('user', message);
             this.messages.push({ role: 'user', content: message });
             $input.val('');
+            this.clearDraft();
 
             this.callLLM();
         },
@@ -1267,6 +1292,58 @@ Always explain what you're about to do before using tools.`;
             } else {
                 this.addMessage('assistant', 'Hello! I\'m your Playground AI Assistant. I can help you manage your WordPress installation - read and modify files, manage plugins, query the database, and more. What would you like to do?');
             }
+        },
+
+        saveDraft: function() {
+            var content = $('#ai-assistant-input').val();
+            try {
+                if (content) {
+                    localStorage.setItem(this.draftStorageKey, content);
+                } else {
+                    localStorage.removeItem(this.draftStorageKey);
+                }
+            } catch (e) {
+                console.warn('[AI Assistant] Could not save draft:', e);
+            }
+        },
+
+        restoreDraft: function() {
+            try {
+                var draft = localStorage.getItem(this.draftStorageKey);
+                if (draft) {
+                    $('#ai-assistant-input').val(draft);
+                }
+            } catch (e) {
+                console.warn('[AI Assistant] Could not restore draft:', e);
+            }
+        },
+
+        clearDraft: function() {
+            try {
+                localStorage.removeItem(this.draftStorageKey);
+            } catch (e) {
+                console.warn('[AI Assistant] Could not clear draft:', e);
+            }
+        },
+
+        loadMostRecentConversation: function() {
+            var self = this;
+
+            $.ajax({
+                url: aiAssistantConfig.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'ai_assistant_list_conversations',
+                    _wpnonce: aiAssistantConfig.nonce
+                },
+                success: function(response) {
+                    if (response.success && response.data.conversations && response.data.conversations.length > 0) {
+                        var mostRecent = response.data.conversations[0];
+                        self.loadConversation(mostRecent.id);
+                    }
+                    // If no conversations, welcome message is already shown
+                }
+            });
         },
 
         setLoading: function(loading) {
