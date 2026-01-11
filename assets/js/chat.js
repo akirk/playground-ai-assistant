@@ -1077,6 +1077,22 @@ Always explain what you're about to do before using tools.`;
             this.scrollToBottom();
         },
 
+        addToolUseMessage: function(toolName, input) {
+            var $messages = $('#ai-assistant-messages');
+            var inputStr = typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input);
+
+            var html = '<div class="ai-tool-result ai-tool-result-success">' +
+                '<div class="ai-tool-header">' +
+                '<span class="ai-tool-toggle">&#9654;</span>' +
+                '<span class="ai-tool-icon">&#9881;</span>' +
+                '<span class="ai-tool-name">' + $('<div>').text(toolName).html() + '</span>' +
+                '</div>' +
+                '<pre class="ai-tool-output">' + $('<div>').text(inputStr).html() + '</pre>' +
+                '</div>';
+
+            $messages.append(html);
+        },
+
         formatContent: function(content) {
             if (!content) return '';
 
@@ -1840,20 +1856,10 @@ Always explain what you're about to do before using tools.`;
                         console.log('[AI Assistant] Adding user message:', msg.content.substring(0, 50));
                         self.addMessage('user', msg.content);
                     } else if (Array.isArray(msg.content)) {
-                        // Check if it's a tool_result (don't show) or actual user content
+                        // Check if it's a tool_result or actual user content
                         msg.content.forEach(function(block) {
                             if (block.type === 'tool_result') {
-                                // Show tool result
-                                var resultContent = block.content;
-                                try {
-                                    resultContent = JSON.parse(block.content);
-                                } catch(e) {}
-                                self.showToolResults([{
-                                    id: block.tool_use_id,
-                                    name: 'tool_result',
-                                    result: resultContent,
-                                    success: !block.is_error
-                                }]);
+                                // Tool results are shown inline with their tool_use, skip displaying separately
                             } else if (block.type === 'text') {
                                 self.addMessage('user', block.text);
                             }
@@ -1868,13 +1874,7 @@ Always explain what you're about to do before using tools.`;
                             if (block.type === 'text' && block.text) {
                                 self.addMessage('assistant', block.text);
                             } else if (block.type === 'tool_use') {
-                                // Show tool usage indicator
-                                self.showToolResults([{
-                                    id: block.id,
-                                    name: block.name,
-                                    result: { input: block.input },
-                                    success: true
-                                }]);
+                                self.addToolUseMessage(block.name, block.input || block.arguments || {});
                             }
                         });
                     }
