@@ -72,6 +72,7 @@ class Chat_UI {
             'model' => get_option('ai_assistant_model', ''),
             'localEndpoint' => get_option('ai_assistant_local_endpoint', 'http://localhost:11434'),
             'settingsUrl' => admin_url('options-general.php?page=ai-assistant-settings'),
+            'homeUrl' => home_url(),
             'systemPrompt' => $settings->get_system_prompt(),
             'strings' => [
                 'placeholder' => __('Ask me anything about your WordPress site...', 'ai-assistant'),

@@ -969,10 +969,6 @@ body:not(.wp-admin) .ai-assistant-standalone-trigger button:focus {
 /* Mobile toggle button */
 .ai-sidebar-toggle {
     display: none;
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 10;
     background: #f6f7f7;
     border: 1px solid #c3c4c7;
     border-radius: 4px;
@@ -1008,7 +1004,22 @@ body:not(.wp-admin) .ai-assistant-standalone-trigger button:focus {
     }
 
     .ai-sidebar-toggle {
-        display: block;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .ai-chat-main-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 15px;
+        background: #f6f7f7;
+        border-bottom: 1px solid #c3c4c7;
+    }
+
+    .ai-chat-main-header .ai-yolo-label {
+        margin-left: auto;
     }
 
     .ai-chat-main {

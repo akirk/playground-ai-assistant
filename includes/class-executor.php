@@ -73,8 +73,14 @@ class Executor {
                 return $this->get_plugins();
             case 'get_themes':
                 return $this->get_themes();
+            case 'install_plugin':
+                $slug = $this->get_string_arg($arguments, 'slug', $tool_name);
+                $activate = isset($arguments['activate']) ? (bool) $arguments['activate'] : false;
+                return $this->install_plugin($slug, $activate);
             case 'run_php':
                 return $this->run_php($this->get_string_arg($arguments, 'code', $tool_name));
+            case 'navigate':
+                return $this->navigate($this->get_string_arg($arguments, 'url', $tool_name));
 
             // Abilities API operations
             case 'list_abilities':
@@ -524,6 +530,99 @@ class Executor {
         ];
     }
 
+    private function install_plugin(string $slug, bool $activate = false): array {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+
+        // Check if plugin is already installed
+        $installed_plugins = get_plugins();
+        foreach ($installed_plugins as $plugin_file => $plugin_data) {
+            if (strpos($plugin_file, $slug . '/') === 0 || $plugin_file === $slug . '.php') {
+                $is_active = is_plugin_active($plugin_file);
+
+                if ($activate && !$is_active) {
+                    $result = activate_plugin($plugin_file);
+                    if (is_wp_error($result)) {
+                        throw new \Exception('Plugin already installed but activation failed: ' . $result->get_error_message());
+                    }
+                    return [
+                        'status' => 'activated',
+                        'message' => "Plugin '{$slug}' was already installed and has been activated.",
+                        'plugin_file' => $plugin_file,
+                    ];
+                }
+
+                return [
+                    'status' => 'already_installed',
+                    'message' => "Plugin '{$slug}' is already installed" . ($is_active ? ' and active' : ' but not active') . ".",
+                    'plugin_file' => $plugin_file,
+                    'active' => $is_active,
+                ];
+            }
+        }
+
+        // Get plugin info from wordpress.org
+        $api = plugins_api('plugin_information', [
+            'slug' => $slug,
+            'fields' => [
+                'sections' => false,
+                'short_description' => true,
+            ],
+        ]);
+
+        if (is_wp_error($api)) {
+            throw new \Exception("Plugin '{$slug}' not found on wordpress.org: " . $api->get_error_message());
+        }
+
+        // Install the plugin
+        $skin = new \WP_Ajax_Upgrader_Skin();
+        $upgrader = new \Plugin_Upgrader($skin);
+        $result = $upgrader->install($api->download_link);
+
+        if (is_wp_error($result)) {
+            throw new \Exception('Installation failed: ' . $result->get_error_message());
+        }
+
+        if ($result === false) {
+            $errors = $skin->get_errors();
+            if (is_wp_error($errors) && $errors->has_errors()) {
+                throw new \Exception('Installation failed: ' . $errors->get_error_message());
+            }
+            throw new \Exception('Installation failed for unknown reason.');
+        }
+
+        // Find the installed plugin file
+        $plugin_file = $upgrader->plugin_info();
+
+        // Activate if requested
+        if ($activate && $plugin_file) {
+            $activate_result = activate_plugin($plugin_file);
+            if (is_wp_error($activate_result)) {
+                return [
+                    'status' => 'installed',
+                    'message' => "Plugin '{$slug}' installed successfully but activation failed: " . $activate_result->get_error_message(),
+                    'plugin_file' => $plugin_file,
+                    'active' => false,
+                ];
+            }
+            return [
+                'status' => 'installed_and_activated',
+                'message' => "Plugin '{$slug}' installed and activated successfully.",
+                'plugin_file' => $plugin_file,
+                'active' => true,
+            ];
+        }
+
+        return [
+            'status' => 'installed',
+            'message' => "Plugin '{$slug}' installed successfully.",
+            'plugin_file' => $plugin_file,
+            'active' => false,
+        ];
+    }
+
     private function run_php(string $code): array {
         ob_start();
         $error = null;
@@ -544,6 +643,32 @@ class Executor {
         return [
             'result' => $result,
             'output' => $output,
+        ];
+    }
+
+    private function navigate(string $url): array {
+        $home_url = home_url();
+        $validated_url = null;
+
+        // Handle relative URLs
+        if (strpos($url, '/') === 0) {
+            $validated_url = home_url($url);
+        } elseif (strpos($url, $home_url) === 0) {
+            $validated_url = $url;
+        } else {
+            throw new \Exception("Invalid URL: The URL must be within the WordPress site (must start with '$home_url' or be a relative path starting with '/')");
+        }
+
+        // Block ThickBox/iframe URLs that won't have AI assistant access
+        if (strpos($validated_url, 'TB_iframe=true') !== false ||
+            strpos($validated_url, 'tab=plugin-information') !== false) {
+            throw new \Exception("Cannot navigate to modal/iframe URLs (like plugin information popups) as the AI assistant won't be available there. Try navigating to the main plugin page instead.");
+        }
+
+        return [
+            'url' => $validated_url,
+            'action' => 'navigate',
+            'message' => 'Ready to navigate to: ' . $validated_url,
         ];
     }
 

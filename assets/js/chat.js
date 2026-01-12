@@ -423,6 +423,18 @@
                     input_schema: { type: 'object', properties: {} }
                 },
                 {
+                    name: 'install_plugin',
+                    description: 'Install a plugin from the WordPress.org plugin directory. The slug is typically the plugin URL path on wordpress.org (e.g., wordpress.org/plugins/contact-form-7 → slug is "contact-form-7").',
+                    input_schema: {
+                        type: 'object',
+                        properties: {
+                            slug: { type: 'string', description: 'The plugin slug from wordpress.org (e.g., "akismet", "contact-form-7", "woocommerce")' },
+                            activate: { type: 'boolean', description: 'Whether to activate the plugin after installation (default: false)' }
+                        },
+                        required: ['slug']
+                    }
+                },
+                {
                     name: 'run_php',
                     description: 'Execute PHP code in the WordPress environment. Use for standard WordPress functions like wp_insert_post(), get_option(), WP_Query, etc.',
                     input_schema: {
@@ -464,6 +476,29 @@
                             arguments: { type: 'object', description: 'Arguments to pass to the ability' }
                         },
                         required: ['ability']
+                    }
+                },
+                {
+                    name: 'navigate',
+                    description: 'Navigate the user to a URL within the WordPress site. Use this to take the user to specific admin pages, posts, or frontend pages. The URL must be within the current WordPress site. Note: This will reload the page, so it should typically be the last action in a conversation turn.',
+                    input_schema: {
+                        type: 'object',
+                        properties: {
+                            url: { type: 'string', description: 'The URL to navigate to. Can be a full URL (must start with the site\'s home URL) or a relative path (e.g., "/wp-admin/edit.php" or "/sample-page/").' }
+                        },
+                        required: ['url']
+                    }
+                },
+                {
+                    name: 'get_page_html',
+                    description: 'Get the HTML content of elements on the current page the user is viewing. Use this to understand what the user is seeing, inspect page structure, or help debug frontend issues. Returns the outer HTML of matched elements.',
+                    input_schema: {
+                        type: 'object',
+                        properties: {
+                            selector: { type: 'string', description: 'CSS selector to query (e.g., "#main-content", ".entry-title", "article", "body"). Use "body" to get the full page content.' },
+                            max_length: { type: 'number', description: 'Maximum characters to return per element (default: 5000). Use a smaller value for large pages.' }
+                        },
+                        required: ['selector']
                     }
                 }
             ];
@@ -758,7 +793,7 @@
 
         processToolCalls: function(toolCalls, provider) {
             var self = this;
-            var destructiveTools = ['write_file', 'edit_file', 'delete_file', 'run_php'];
+            var destructiveTools = ['write_file', 'edit_file', 'delete_file', 'run_php', 'install_plugin'];
 
             // YOLO mode: execute everything immediately
             if (this.yoloMode) {
@@ -818,6 +853,11 @@
             var toolName = toolCall.name || toolCall.tool;
             console.log('[AI Assistant] Executing tool:', toolName, 'with arguments:', toolCall.arguments);
 
+            // Handle client-side tools
+            if (toolName === 'get_page_html') {
+                return this.executeGetPageHtml(toolCall);
+            }
+
             return new Promise(function(resolve, reject) {
                 $.ajax({
                     url: aiAssistantConfig.ajaxUrl,
@@ -846,12 +886,10 @@
                         var toolResult = {
                             id: toolCall.id,
                             name: toolName,
+                            input: toolCall.arguments,
                             result: response.success ? response.data : { error: errorMessage },
                             success: response.success
                         };
-                        if (!response.success) {
-                            toolResult.input = toolCall.arguments;
-                        }
                         resolve(toolResult);
                     },
                     error: function(xhr, status, errorThrown) {
@@ -890,8 +928,112 @@
             });
         },
 
+        executeGetPageHtml: function(toolCall) {
+            var args = toolCall.arguments || {};
+            var selector = args.selector || 'body';
+            var maxLength = args.max_length || 5000;
+
+            var isAiAssistantElement = function(el) {
+                if (!el) return false;
+                if (el.id && el.id.indexOf('ai-assistant') === 0) return true;
+                if (el.id === 'ai-conversation-modal') return true;
+                if (el.className && typeof el.className === 'string' && el.className.indexOf('ai-assistant') >= 0) return true;
+                return false;
+            };
+
+            var removeAiAssistantElements = function(container) {
+                var aiElements = container.querySelectorAll('[id^="ai-assistant"], [class*="ai-assistant"], #ai-conversation-modal');
+                aiElements.forEach(function(el) { el.remove(); });
+            };
+
+            return new Promise(function(resolve) {
+                try {
+                    var elements = document.querySelectorAll(selector);
+                    var results = [];
+                    var totalLength = 0;
+                    var skippedCount = 0;
+
+                    if (elements.length === 0) {
+                        resolve({
+                            id: toolCall.id,
+                            name: 'get_page_html',
+                            input: args,
+                            result: {
+                                error: 'No elements found matching selector: ' + selector,
+                                selector: selector,
+                                url: window.location.href
+                            },
+                            success: false
+                        });
+                        return;
+                    }
+
+                    elements.forEach(function(el, index) {
+                        if (totalLength >= maxLength * 3) return;
+
+                        if (isAiAssistantElement(el)) {
+                            skippedCount++;
+                            return;
+                        }
+
+                        var html;
+                        if (el.tagName === 'BODY' || el.tagName === 'HTML' || el.id === 'wpwrap' || el.id === 'wpcontent') {
+                            var clone = el.cloneNode(true);
+                            removeAiAssistantElements(clone);
+                            html = clone.outerHTML;
+                        } else {
+                            html = el.outerHTML;
+                        }
+
+                        if (html.length > maxLength) {
+                            html = html.substring(0, maxLength) + '\n... (truncated, ' + (html.length - maxLength) + ' more chars)';
+                        }
+                        totalLength += html.length;
+
+                        results.push({
+                            index: index,
+                            tagName: el.tagName.toLowerCase(),
+                            id: el.id || null,
+                            className: el.className || null,
+                            html: html
+                        });
+                    });
+
+                    resolve({
+                        id: toolCall.id,
+                        name: 'get_page_html',
+                        input: args,
+                        result: {
+                            selector: selector,
+                            url: window.location.href,
+                            title: document.title,
+                            matchCount: elements.length - skippedCount,
+                            elements: results
+                        },
+                        success: true
+                    });
+                } catch (e) {
+                    resolve({
+                        id: toolCall.id,
+                        name: 'get_page_html',
+                        input: args,
+                        result: {
+                            error: 'Invalid selector or error: ' + e.message,
+                            selector: selector
+                        },
+                        success: false
+                    });
+                }
+            });
+        },
+
         handleToolResults: function(results, provider) {
             var self = this;
+
+            // Check for navigate result - handle specially since it causes page reload
+            var navigateResult = results.find(function(r) {
+                return r.name === 'navigate' && r.success && r.result && r.result.url;
+            });
 
             // Deduplicate file reads to save context
             this.deduplicateFileReads(results);
@@ -922,6 +1064,17 @@
 
             // Update token count
             this.updateTokenCount();
+
+            // Handle navigate specially - save conversation then redirect
+            if (navigateResult) {
+                var targetUrl = navigateResult.result.url;
+                this.addMessage('system', 'Navigating to: ' + targetUrl);
+                this.setLoading(false);
+
+                // Save conversation before navigating (page will reload)
+                this.saveConversationThenNavigate(targetUrl);
+                return;
+            }
 
             // Continue the conversation
             this.callLLM();
@@ -996,17 +1149,48 @@
 
         getActionDescription: function(toolName, args) {
             switch (toolName) {
+                // File tools
+                case 'read_file':
+                    return 'Read: ' + (args.path || 'unknown');
                 case 'write_file':
-                    return 'Write to file: ' + (args.path || 'unknown');
+                    return 'Write: ' + (args.path || 'unknown');
                 case 'edit_file':
                     var editCount = args.edits ? args.edits.length : 0;
-                    return 'Edit file: ' + (args.path || 'unknown') + ' (' + editCount + ' change' + (editCount !== 1 ? 's' : '') + ')';
+                    return 'Edit: ' + (args.path || 'unknown') + ' (' + editCount + ' change' + (editCount !== 1 ? 's' : '') + ')';
                 case 'delete_file':
-                    return 'Delete file: ' + (args.path || 'unknown');
+                    return 'Delete: ' + (args.path || 'unknown');
+                case 'list_directory':
+                    return 'List: ' + (args.path || 'wp-content');
+                case 'search_files':
+                    return 'Search files: ' + (args.pattern || 'unknown');
+                case 'search_content':
+                    return 'Search for: "' + (args.needle || '').substring(0, 30) + (args.needle && args.needle.length > 30 ? '...' : '') + '"';
+                // Database tools
+                case 'db_query':
+                    var sql = (args.sql || '').substring(0, 40);
+                    return 'Query: ' + sql + (args.sql && args.sql.length > 40 ? '...' : '');
+                // WordPress tools
+                case 'get_plugins':
+                    return 'List plugins';
+                case 'get_themes':
+                    return 'List themes';
+                case 'install_plugin':
+                    return 'Install plugin: ' + (args.slug || 'unknown') + (args.activate ? ' (+ activate)' : '');
                 case 'run_php':
                     return 'Run PHP code';
+                case 'navigate':
+                    return 'Navigate to: ' + (args.url || 'unknown');
+                case 'get_page_html':
+                    return 'Get page HTML: ' + (args.selector || 'body');
+                // Abilities tools
+                case 'list_abilities':
+                    return 'List abilities' + (args.category ? ' (' + args.category + ')' : '');
+                case 'get_ability':
+                    return 'Get ability: ' + (args.ability || 'unknown');
+                case 'execute_ability':
+                    return 'Execute: ' + (args.ability || 'unknown');
                 default:
-                    return 'Execute: ' + toolName;
+                    return toolName;
             }
         },
 
@@ -1032,12 +1216,13 @@
         addToolUseMessage: function(toolName, input) {
             var $messages = $('#ai-assistant-messages');
             var inputStr = typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input);
+            var description = this.getActionDescription(toolName, input || {});
 
             var html = '<div class="ai-tool-result ai-tool-result-success">' +
                 '<div class="ai-tool-header">' +
                 '<span class="ai-tool-toggle">&#9654;</span>' +
                 '<span class="ai-tool-icon">&#9881;</span>' +
-                '<span class="ai-tool-name">' + $('<div>').text(toolName).html() + '</span>' +
+                '<span class="ai-tool-name">' + $('<div>').text(description).html() + '</span>' +
                 '</div>' +
                 '<pre class="ai-tool-output">' + $('<div>').text(inputStr).html() + '</pre>' +
                 '</div>';
@@ -1075,11 +1260,13 @@
         },
 
         showToolResults: function(results) {
+            var self = this;
             var $messages = $('#ai-assistant-messages');
 
             results.forEach(function(result) {
                 var statusClass = result.success ? 'success' : 'error';
                 var statusIcon = result.success ? '&#10003;' : '&#10007;';
+                var description = self.getActionDescription(result.name, result.input || {});
 
                 var resultStr;
                 if (typeof result.result === 'object') {
@@ -1095,49 +1282,58 @@
                 }
 
                 var inputHtml = '';
-                if (!result.success && result.input) {
-                    var truncatedInput = {};
-                    var maxValueLength = 500;
-                    for (var key in result.input) {
-                        if (result.input.hasOwnProperty(key)) {
-                            var val = result.input[key];
-                            if (typeof val === 'string' && val.length > maxValueLength) {
-                                truncatedInput[key] = val.substring(0, maxValueLength) + '... (' + val.length + ' chars total)';
-                            } else if (Array.isArray(val)) {
-                                truncatedInput[key] = val.map(function(item) {
-                                    if (typeof item === 'string' && item.length > maxValueLength) {
-                                        return item.substring(0, maxValueLength) + '... (' + item.length + ' chars total)';
-                                    } else if (typeof item === 'object' && item !== null) {
-                                        var truncatedItem = {};
-                                        for (var itemKey in item) {
-                                            if (item.hasOwnProperty(itemKey)) {
-                                                var itemVal = item[itemKey];
-                                                if (typeof itemVal === 'string' && itemVal.length > maxValueLength) {
-                                                    truncatedItem[itemKey] = itemVal.substring(0, maxValueLength) + '... (' + itemVal.length + ' chars total)';
-                                                } else {
-                                                    truncatedItem[itemKey] = itemVal;
+                var showInput = !result.success || result.name === 'run_php';
+                if (showInput && result.input) {
+                    var inputLabel = result.name === 'run_php' ? 'Code executed:' : 'Input parameters:';
+                    var inputDisplay;
+
+                    if (result.name === 'run_php' && result.input.code) {
+                        inputDisplay = result.input.code;
+                    } else {
+                        var truncatedInput = {};
+                        var maxValueLength = 500;
+                        for (var key in result.input) {
+                            if (result.input.hasOwnProperty(key)) {
+                                var val = result.input[key];
+                                if (typeof val === 'string' && val.length > maxValueLength) {
+                                    truncatedInput[key] = val.substring(0, maxValueLength) + '... (' + val.length + ' chars total)';
+                                } else if (Array.isArray(val)) {
+                                    truncatedInput[key] = val.map(function(item) {
+                                        if (typeof item === 'string' && item.length > maxValueLength) {
+                                            return item.substring(0, maxValueLength) + '... (' + item.length + ' chars total)';
+                                        } else if (typeof item === 'object' && item !== null) {
+                                            var truncatedItem = {};
+                                            for (var itemKey in item) {
+                                                if (item.hasOwnProperty(itemKey)) {
+                                                    var itemVal = item[itemKey];
+                                                    if (typeof itemVal === 'string' && itemVal.length > maxValueLength) {
+                                                        truncatedItem[itemKey] = itemVal.substring(0, maxValueLength) + '... (' + itemVal.length + ' chars total)';
+                                                    } else {
+                                                        truncatedItem[itemKey] = itemVal;
+                                                    }
                                                 }
                                             }
+                                            return truncatedItem;
                                         }
-                                        return truncatedItem;
-                                    }
-                                    return item;
-                                });
-                            } else {
-                                truncatedInput[key] = val;
+                                        return item;
+                                    });
+                                } else {
+                                    truncatedInput[key] = val;
+                                }
                             }
                         }
+                        inputDisplay = JSON.stringify(truncatedInput, null, 2);
                     }
-                    var inputStr = JSON.stringify(truncatedInput, null, 2);
-                    inputHtml = '<div class="ai-tool-input-label">Input parameters:</div>' +
-                        '<pre class="ai-tool-input">' + $('<div>').text(inputStr).html() + '</pre>';
+
+                    inputHtml = '<div class="ai-tool-input-label">' + inputLabel + '</div>' +
+                        '<pre class="ai-tool-input">' + $('<div>').text(inputDisplay).html() + '</pre>';
                 }
 
                 var content = '<div class="ai-tool-result ai-tool-result-' + statusClass + '">' +
                     '<div class="ai-tool-header">' +
                     '<span class="ai-tool-toggle">&#9654;</span>' +
                     '<span class="ai-tool-icon">' + statusIcon + '</span>' +
-                    '<span class="ai-tool-name">' + result.name + '</span>' +
+                    '<span class="ai-tool-name">' + self.escapeHtml(description) + '</span>' +
                     '</div>' +
                     inputHtml +
                     '<pre class="ai-tool-output">' + $('<div>').text(resultStr).html() + '</pre>' +
@@ -2122,6 +2318,39 @@
                 }
                 this.saveConversation(true);
             }
+        },
+
+        saveConversationThenNavigate: function(targetUrl) {
+            var self = this;
+
+            if (this.messages.length === 0) {
+                window.location.href = targetUrl;
+                return;
+            }
+
+            $.ajax({
+                url: aiAssistantConfig.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'ai_assistant_save_conversation',
+                    _wpnonce: aiAssistantConfig.nonce,
+                    conversation_id: this.conversationId,
+                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(this.messages)))),
+                    title: this.conversationTitle,
+                    provider: this.conversationProvider,
+                    model: this.conversationModel
+                },
+                success: function(response) {
+                    if (response.success) {
+                        console.log('[AI Assistant] Conversation saved before navigation');
+                    }
+                    window.location.href = targetUrl;
+                },
+                error: function() {
+                    console.error('[AI Assistant] Failed to save conversation before navigation');
+                    window.location.href = targetUrl;
+                }
+            });
         },
 
         generateConversationTitle: function() {

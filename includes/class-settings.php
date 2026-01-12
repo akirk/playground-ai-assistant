@@ -1073,25 +1073,154 @@ class Settings {
     }
 
     /**
+     * Get page-specific CSS selector hints for the current admin screen
+     */
+    private function get_page_selector_hints(): string {
+        global $pagenow;
+        $hints = [];
+
+        // Get current screen if available
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $screen_id = $screen ? $screen->id : '';
+
+        // Plugin pages
+        if ($pagenow === 'plugins.php') {
+            $hints[] = '- .wp-list-table.plugins: Table of installed plugins';
+            $hints[] = '- tr.active: Currently active plugins';
+            $hints[] = '- tr.inactive: Currently inactive plugins';
+            $hints[] = '- .plugin-title strong: Plugin names';
+        } elseif ($pagenow === 'plugin-install.php') {
+            $hints[] = '- .plugin-card: Each available plugin in the directory';
+            $hints[] = '- .plugin-card .name: Plugin name';
+            $hints[] = '- .plugin-card .desc: Plugin description';
+            $hints[] = '- .plugin-action-buttons: Install/activate buttons';
+        }
+
+        // Posts/Pages
+        elseif ($pagenow === 'edit.php') {
+            $post_type = $_GET['post_type'] ?? 'post';
+            $hints[] = "- .wp-list-table.posts: Table of {$post_type}s";
+            $hints[] = '- .row-title: Post/page titles';
+            $hints[] = '- .column-date: Publication dates';
+            $hints[] = '- tr.status-publish: Published items';
+            $hints[] = '- tr.status-draft: Draft items';
+        } elseif ($pagenow === 'post.php' || $pagenow === 'post-new.php') {
+            $hints[] = '- #title, #post-title-0: Post title field';
+            $hints[] = '- #content, .editor-styles-wrapper: Post content area';
+            $hints[] = '- #categorydiv: Categories metabox';
+            $hints[] = '- #tagsdiv-post_tag: Tags metabox';
+        }
+
+        // Media
+        elseif ($pagenow === 'upload.php') {
+            $hints[] = '- .wp-list-table.media: Media library table view';
+            $hints[] = '- .attachments-browser: Media grid view';
+            $hints[] = '- .attachment: Individual media items';
+        }
+
+        // Users
+        elseif ($pagenow === 'users.php') {
+            $hints[] = '- .wp-list-table.users: Users table';
+            $hints[] = '- .column-username: Usernames';
+            $hints[] = '- .column-role: User roles';
+        } elseif ($pagenow === 'user-edit.php' || $pagenow === 'profile.php') {
+            $hints[] = '- #your-profile: User profile form';
+            $hints[] = '- #email: User email field';
+            $hints[] = '- #role: User role selector';
+        }
+
+        // Themes
+        elseif ($pagenow === 'themes.php') {
+            if (isset($_GET['page'])) {
+                $hints[] = '- #customize-controls: Customizer panel';
+            } else {
+                $hints[] = '- .themes: Theme grid';
+                $hints[] = '- .theme: Individual theme cards';
+                $hints[] = '- .theme.active: Currently active theme';
+            }
+        }
+
+        // Settings
+        elseif ($pagenow === 'options-general.php' || strpos($pagenow, 'options-') === 0) {
+            $hints[] = '- .form-table: Settings form';
+            $hints[] = '- .form-table th: Setting labels';
+            $hints[] = '- .form-table td: Setting inputs';
+        }
+
+        // Comments
+        elseif ($pagenow === 'edit-comments.php') {
+            $hints[] = '- .wp-list-table.comments: Comments table';
+            $hints[] = '- .comment-author: Comment author info';
+            $hints[] = '- .comment-body: Comment content';
+        }
+
+        // Dashboard
+        elseif ($pagenow === 'index.php' && $screen_id === 'dashboard') {
+            $hints[] = '- #dashboard-widgets: Dashboard widget area';
+            $hints[] = '- .postbox: Individual dashboard widgets';
+            $hints[] = '- #welcome-panel: Welcome panel (if visible)';
+        }
+
+        // Menus
+        elseif ($pagenow === 'nav-menus.php') {
+            $hints[] = '- #menu-to-edit: Current menu items';
+            $hints[] = '- .menu-item: Individual menu items';
+            $hints[] = '- #menu-settings-column: Available menu items';
+        }
+
+        // Widgets
+        elseif ($pagenow === 'widgets.php') {
+            $hints[] = '- #widgets-right: Widget areas/sidebars';
+            $hints[] = '- #available-widgets: Available widgets';
+            $hints[] = '- .widget: Individual widgets';
+        }
+
+        // Frontend (non-admin)
+        if (!is_admin()) {
+            $hints[] = '- article, .post, .hentry: Blog posts';
+            $hints[] = '- .entry-title: Post titles';
+            $hints[] = '- .entry-content: Post content';
+            $hints[] = '- .widget-area, .sidebar: Sidebar widgets';
+            $hints[] = '- .site-header, header: Site header';
+            $hints[] = '- .site-footer, footer: Site footer';
+            $hints[] = '- .nav-menu, .main-navigation: Navigation menus';
+        }
+
+        return implode("\n", $hints);
+    }
+
+    /**
      * Get the system prompt for the AI assistant
      */
     public function get_system_prompt() {
+        $current_url = home_url(add_query_arg([], $_SERVER['REQUEST_URI'] ?? ''));
+        $page_hints = $this->get_page_selector_hints();
         $wp_info = [
             'siteUrl' => get_site_url(),
+            'currentUrl' => $current_url,
             'wpVersion' => get_bloginfo('version'),
             'theme' => get_template(),
             'phpVersion' => phpversion(),
         ];
 
-        return "You are the Playground AI Assistant integrated into WordPress. You help users manage and modify their WordPress installation.
+        $prompt = "You are the Playground AI Assistant integrated into WordPress. You help users manage and modify their WordPress installation.
 
 Current WordPress Information:
 - Site URL: {$wp_info['siteUrl']}
+- Current Page: {$wp_info['currentUrl']}
 - WordPress Version: {$wp_info['wpVersion']}
 - Active Theme: {$wp_info['theme']}
-- PHP Version: {$wp_info['phpVersion']}
+- PHP Version: {$wp_info['phpVersion']}";
+
+        if ($page_hints) {
+            $prompt .= "\n\nPAGE STRUCTURE (useful CSS selectors for get_page_html on this page):\n" . $page_hints;
+        }
+
+        return $prompt . "
 
 You have access to tools that let you interact with the WordPress filesystem and database. All file paths are relative to wp-content/.
+
+If the user describes something they are seeing on the page, references UI elements, or asks about content visible on screen, use the get_page_html tool to see what they're looking at.
 
 WORDPRESS ABILITIES API:
 For common WordPress operations (posts, options, queries, users), use run_php with standard WordPress functions.

@@ -70,7 +70,10 @@ class Tools {
         return [
             $this->tool_get_plugins(),
             $this->tool_get_themes(),
+            $this->tool_install_plugin(),
             $this->tool_run_php(),
+            $this->tool_navigate(),
+            $this->tool_get_page_html(),
         ];
     }
 
@@ -268,6 +271,27 @@ class Tools {
         ];
     }
 
+    private function tool_install_plugin(): array {
+        return [
+            'name' => 'install_plugin',
+            'description' => 'Install a plugin from the WordPress.org plugin directory. The slug is typically the plugin URL path on wordpress.org (e.g., wordpress.org/plugins/contact-form-7 → slug is "contact-form-7").',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'slug' => [
+                        'type' => 'string',
+                        'description' => 'The plugin slug from wordpress.org (e.g., "akismet", "contact-form-7", "woocommerce")',
+                    ],
+                    'activate' => [
+                        'type' => 'boolean',
+                        'description' => 'Whether to activate the plugin after installation (default: false)',
+                    ],
+                ],
+                'required' => ['slug'],
+            ],
+        ];
+    }
+
     private function tool_run_php(): array {
         return [
             'name' => 'run_php',
@@ -281,6 +305,44 @@ class Tools {
                     ],
                 ],
                 'required' => ['code'],
+            ],
+        ];
+    }
+
+    private function tool_navigate(): array {
+        return [
+            'name' => 'navigate',
+            'description' => 'Navigate the user to a URL within the WordPress site. Use this to take the user to specific admin pages, posts, or frontend pages. The URL must be within the current WordPress site. Note: This will reload the page, so it should typically be the last action in a conversation turn.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'url' => [
+                        'type' => 'string',
+                        'description' => 'The URL to navigate to. Can be a full URL (must start with the site\'s home URL) or a relative path (e.g., "/wp-admin/edit.php" or "/sample-page/").',
+                    ],
+                ],
+                'required' => ['url'],
+            ],
+        ];
+    }
+
+    private function tool_get_page_html(): array {
+        return [
+            'name' => 'get_page_html',
+            'description' => 'Get the HTML content of elements on the current page the user is viewing. Use this to understand what the user is seeing, inspect page structure, or help debug frontend issues. Returns the outer HTML of matched elements.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'selector' => [
+                        'type' => 'string',
+                        'description' => 'CSS selector to query (e.g., "#main-content", ".entry-title", "article", "body"). Use "body" to get the full page content.',
+                    ],
+                    'max_length' => [
+                        'type' => 'number',
+                        'description' => 'Maximum characters to return per element (default: 5000). Use a smaller value for large pages.',
+                    ],
+                ],
+                'required' => ['selector'],
             ],
         ];
     }
