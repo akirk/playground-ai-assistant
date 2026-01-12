@@ -18,7 +18,8 @@ class Tools {
             $this->get_file_tools(),
             $this->get_database_tools(),
             $this->get_wordpress_tools(),
-            $this->get_abilities_tools()
+            $this->get_abilities_tools(),
+            $this->get_skill_tools()
         );
     }
 
@@ -36,6 +37,8 @@ class Tools {
             $this->tool_get_themes(),
             $this->tool_list_abilities(),
             $this->tool_get_ability(),
+            $this->tool_list_skills(),
+            $this->tool_get_skill(),
         ];
     }
 
@@ -407,6 +410,48 @@ class Tools {
                     ],
                 ],
                 'required' => ['ability'],
+            ],
+        ];
+    }
+
+    // ===== SKILL TOOLS =====
+
+    private function get_skill_tools(): array {
+        return [
+            $this->tool_list_skills(),
+            $this->tool_get_skill(),
+        ];
+    }
+
+    private function tool_list_skills(): array {
+        return [
+            'name' => 'list_skills',
+            'description' => 'List available skills (specialized knowledge documents). Skills provide guidance on WordPress development patterns, best practices, and how-to information. Use get_skill to load the full content of a skill.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'category' => [
+                        'type' => 'string',
+                        'description' => 'Optional category to filter skills (e.g., "blocks", "api", "theme")',
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    private function tool_get_skill(): array {
+        return [
+            'name' => 'get_skill',
+            'description' => 'Load a skill document containing specialized knowledge. Use list_skills first to see available skills. Skills provide detailed guidance, code examples, and best practices for specific WordPress development topics.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'skill' => [
+                        'type' => 'string',
+                        'description' => 'The skill identifier (e.g., "blocks-no-build", "custom-post-types")',
+                    ],
+                ],
+                'required' => ['skill'],
             ],
         ];
     }

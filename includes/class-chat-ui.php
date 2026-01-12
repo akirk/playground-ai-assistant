@@ -96,11 +96,18 @@ class Chat_UI {
             return;
         }
 
-        // Don't render on the dedicated AI Assistant page (it has its own UI)
+        // Don't render on certain admin pages
         if (is_admin()) {
             $screen = get_current_screen();
-            if ($screen && $screen->id === 'tools_page_ai-conversations') {
-                return;
+            if ($screen) {
+                // Skip the dedicated AI Assistant page (it has its own UI)
+                if ($screen->id === 'tools_page_ai-conversations') {
+                    return;
+                }
+                // Skip the block editor (Gutenberg) - it has its own UI paradigm
+                if ($screen->is_block_editor()) {
+                    return;
+                }
             }
         }
 

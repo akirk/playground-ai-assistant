@@ -28,7 +28,7 @@ class Executor {
      */
     public function execute_tool(string $tool_name, array $arguments, string $permission = 'full') {
         // Validate permission
-        $read_only_tools = ['read_file', 'list_directory', 'search_files', 'search_content', 'db_query', 'get_plugins', 'get_themes', 'list_abilities', 'get_ability'];
+        $read_only_tools = ['read_file', 'list_directory', 'search_files', 'search_content', 'db_query', 'get_plugins', 'get_themes', 'list_abilities', 'get_ability', 'list_skills', 'get_skill'];
 
         if ($permission === 'read_only' && !in_array($tool_name, $read_only_tools)) {
             throw new \Exception("Tool '$tool_name' requires full access permission");
@@ -91,6 +91,12 @@ class Executor {
                 $ability = $this->get_string_arg($arguments, 'ability', $tool_name);
                 $ability_args = $arguments['arguments'] ?? [];
                 return $this->execute_ability($ability, $ability_args);
+
+            // Skills operations
+            case 'list_skills':
+                return $this->list_skills($this->get_string_arg($arguments, 'category', $tool_name, ''));
+            case 'get_skill':
+                return $this->get_skill($this->get_string_arg($arguments, 'skill', $tool_name));
 
             default:
                 throw new \Exception("Unknown tool: $tool_name");
@@ -777,6 +783,102 @@ class Executor {
             'ability' => $ability_id,
             'success' => true,
             'result' => $result,
+        ];
+    }
+
+    // ===== SKILLS OPERATIONS =====
+
+    private function get_skills_directory(): string {
+        return plugin_dir_path(__DIR__) . 'skills/';
+    }
+
+    private function parse_frontmatter(string $content): array {
+        $frontmatter = [];
+        $body = $content;
+
+        if (preg_match('/^---\s*\n(.*?)\n---\s*\n(.*)$/s', $content, $matches)) {
+            $yaml_content = $matches[1];
+            $body = $matches[2];
+
+            foreach (explode("\n", $yaml_content) as $line) {
+                if (preg_match('/^(\w+):\s*(.+)$/', trim($line), $kv)) {
+                    $frontmatter[$kv[1]] = trim($kv[2], '"\'');
+                }
+            }
+        }
+
+        return [
+            'frontmatter' => $frontmatter,
+            'body' => $body,
+        ];
+    }
+
+    private function list_skills(string $category = ''): array {
+        $skills_dir = $this->get_skills_directory();
+
+        if (!is_dir($skills_dir)) {
+            return [
+                'skills' => [],
+                'count' => 0,
+                'message' => 'No skills directory found',
+            ];
+        }
+
+        $files = glob($skills_dir . '*.md');
+        $skills = [];
+
+        foreach ($files as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+
+            $parsed = $this->parse_frontmatter($content);
+            $fm = $parsed['frontmatter'];
+
+            $skill_id = basename($file, '.md');
+            $skill_category = $fm['category'] ?? 'general';
+
+            if (!empty($category) && $skill_category !== $category) {
+                continue;
+            }
+
+            $skills[] = [
+                'id' => $skill_id,
+                'title' => $fm['title'] ?? $skill_id,
+                'description' => $fm['description'] ?? '',
+                'category' => $skill_category,
+            ];
+        }
+
+        return [
+            'skills' => $skills,
+            'count' => count($skills),
+            'filter' => $category ?: null,
+        ];
+    }
+
+    private function get_skill(string $skill_id): array {
+        $skills_dir = $this->get_skills_directory();
+        $skill_file = $skills_dir . $skill_id . '.md';
+
+        if (!file_exists($skill_file)) {
+            throw new \Exception("Skill not found: $skill_id. Use list_skills to see available skills.");
+        }
+
+        $content = file_get_contents($skill_file);
+        if ($content === false) {
+            throw new \Exception("Failed to read skill: $skill_id");
+        }
+
+        $parsed = $this->parse_frontmatter($content);
+
+        return [
+            'id' => $skill_id,
+            'title' => $parsed['frontmatter']['title'] ?? $skill_id,
+            'description' => $parsed['frontmatter']['description'] ?? '',
+            'category' => $parsed['frontmatter']['category'] ?? 'general',
+            'content' => trim($parsed['body']),
         ];
     }
 }

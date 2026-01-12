@@ -794,21 +794,18 @@
         processToolCalls: function(toolCalls, provider) {
             var self = this;
             var destructiveTools = ['write_file', 'edit_file', 'delete_file', 'run_php', 'install_plugin'];
-
-            // YOLO mode: execute everything immediately
-            if (this.yoloMode) {
-                this.executeTools(toolCalls, provider);
-                return;
-            }
+            var alwaysConfirmTools = ['navigate']; // Always confirm, even in YOLO mode
 
             var needsConfirmation = [];
             var executeImmediately = [];
 
             toolCalls.forEach(function(tc) {
-                if (destructiveTools.indexOf(tc.name) >= 0) {
+                if (alwaysConfirmTools.indexOf(tc.name) >= 0) {
                     needsConfirmation.push(tc);
-                } else {
+                } else if (self.yoloMode || destructiveTools.indexOf(tc.name) < 0) {
                     executeImmediately.push(tc);
+                } else {
+                    needsConfirmation.push(tc);
                 }
             });
 

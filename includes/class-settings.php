@@ -17,6 +17,7 @@ class Settings {
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_ajax_ai_assistant_save_model', [$this, 'ajax_save_model']);
+        add_action('wp_ajax_ai_assistant_get_skill', [$this, 'ajax_get_skill']);
         add_action('load-tools_page_ai-conversations', [$this, 'add_help_tabs']);
         add_action('load-settings_page_ai-assistant-settings', [$this, 'add_help_tabs']);
     }
@@ -38,6 +39,49 @@ class Settings {
 
         update_option('ai_assistant_model', $model);
         wp_send_json_success(['model' => $model]);
+    }
+
+    public function ajax_get_skill() {
+        check_ajax_referer('ai_assistant_skills', '_wpnonce');
+
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $skill_id = sanitize_file_name($_POST['skill'] ?? '');
+        if (empty($skill_id)) {
+            wp_send_json_error(['message' => 'Skill ID is required']);
+        }
+
+        $skills_dir = plugin_dir_path(__DIR__) . 'skills/';
+        $skill_file = $skills_dir . $skill_id . '.md';
+
+        if (!file_exists($skill_file)) {
+            wp_send_json_error(['message' => 'Skill not found']);
+        }
+
+        $content = file_get_contents($skill_file);
+        if ($content === false) {
+            wp_send_json_error(['message' => 'Failed to read skill']);
+        }
+
+        $frontmatter = [];
+        $body = $content;
+
+        if (preg_match('/^---\s*\n(.*?)\n---\s*\n(.*)$/s', $content, $matches)) {
+            foreach (explode("\n", $matches[1]) as $line) {
+                if (preg_match('/^(\w+):\s*(.+)$/', trim($line), $kv)) {
+                    $frontmatter[$kv[1]] = trim($kv[2], '"\'');
+                }
+            }
+            $body = $matches[2];
+        }
+
+        wp_send_json_success([
+            'id' => $skill_id,
+            'title' => $frontmatter['title'] ?? $skill_id,
+            'content' => $body,
+        ]);
     }
 
     /**
@@ -137,6 +181,13 @@ class Settings {
             'id'      => 'ai-assistant-tools',
             'title'   => __('Available Tools', 'ai-assistant'),
             'content' => '<p>' . __('The AI Assistant has access to the following tools:', 'ai-assistant') . '</p>' . $tools_list,
+        ]);
+
+        $skills_content = $this->get_skills_help_content();
+        $screen->add_help_tab([
+            'id'      => 'ai-assistant-skills',
+            'title'   => __('Available Skills', 'ai-assistant'),
+            'content' => $skills_content,
         ]);
 
         $screen->add_help_tab([
@@ -1190,14 +1241,136 @@ class Settings {
     }
 
     /**
+     * Get skills help tab content
+     */
+    private function get_skills_help_content(): string {
+        $skills_dir = plugin_dir_path(__DIR__) . 'skills/';
+
+        if (!is_dir($skills_dir)) {
+            return '<p>' . __('No skills available. Add .md files to the skills/ directory.', 'ai-assistant') . '</p>';
+        }
+
+        $files = glob($skills_dir . '*.md');
+        if (empty($files)) {
+            return '<p>' . __('No skills available. Add .md files to the skills/ directory.', 'ai-assistant') . '</p>';
+        }
+
+        $skills_by_category = [];
+
+        foreach ($files as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+
+            $frontmatter = [];
+            if (preg_match('/^---\s*\n(.*?)\n---\s*\n/s', $content, $matches)) {
+                foreach (explode("\n", $matches[1]) as $line) {
+                    if (preg_match('/^(\w+):\s*(.+)$/', trim($line), $kv)) {
+                        $frontmatter[$kv[1]] = trim($kv[2], '"\'');
+                    }
+                }
+            }
+
+            $skill_id = basename($file, '.md');
+            $category = $frontmatter['category'] ?? 'general';
+
+            $skills_by_category[$category][] = [
+                'id' => $skill_id,
+                'title' => $frontmatter['title'] ?? $skill_id,
+                'description' => $frontmatter['description'] ?? '',
+            ];
+        }
+
+        ksort($skills_by_category);
+
+        $nonce = wp_create_nonce('ai_assistant_skills');
+
+        $html = '<p>' . __('Skills are specialized knowledge documents the AI can load on-demand. Click a skill to view its content:', 'ai-assistant') . '</p>';
+
+        foreach ($skills_by_category as $category => $skills) {
+            $html .= '<h4 style="margin: 1em 0 0.5em; text-transform: capitalize;">' . esc_html($category) . '</h4>';
+            $html .= '<ul style="margin-top: 0;">';
+            foreach ($skills as $skill) {
+                $html .= '<li>';
+                $html .= '<a href="#" class="ai-skill-link" data-skill="' . esc_attr($skill['id']) . '">';
+                $html .= '<code>' . esc_html($skill['id']) . '</code>';
+                if ($skill['title'] !== $skill['id']) {
+                    $html .= ' - ' . esc_html($skill['title']);
+                }
+                $html .= '</a>';
+                if ($skill['description']) {
+                    $html .= '<br><em>' . esc_html($skill['description']) . '</em>';
+                }
+                $html .= '</li>';
+            }
+            $html .= '</ul>';
+        }
+
+        $html .= '<div id="ai-skill-content" style="display:none; margin-top: 1em; padding: 10px; background: #f6f7f7; border-radius: 4px;">';
+        $html .= '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">';
+        $html .= '<strong id="ai-skill-title"></strong>';
+        $html .= '<a href="#" id="ai-skill-close" style="text-decoration: none;">&times; close</a>';
+        $html .= '</div>';
+        $html .= '<pre id="ai-skill-body" style="white-space: pre-wrap; margin: 0; max-height: 300px; overflow-y: auto;"></pre>';
+        $html .= '</div>';
+
+        $html .= '<script>
+        jQuery(function($) {
+            var nonce = ' . json_encode($nonce) . ';
+            var ajaxUrl = ' . json_encode(admin_url('admin-ajax.php')) . ';
+
+            $(".ai-skill-link").on("click", function(e) {
+                e.preventDefault();
+                var skill = $(this).data("skill");
+                var $content = $("#ai-skill-content");
+                var $body = $("#ai-skill-body");
+                var $title = $("#ai-skill-title");
+
+                $body.text("Loading...");
+                $title.text("");
+                $content.show();
+
+                $.post(ajaxUrl, {
+                    action: "ai_assistant_get_skill",
+                    skill: skill,
+                    _wpnonce: nonce
+                }, function(response) {
+                    if (response.success) {
+                        $title.text(response.data.title);
+                        $body.text(response.data.content);
+                    } else {
+                        $body.text("Error: " + response.data.message);
+                    }
+                }).fail(function() {
+                    $body.text("Failed to load skill");
+                });
+            });
+
+            $("#ai-skill-close").on("click", function(e) {
+                e.preventDefault();
+                $("#ai-skill-content").hide();
+            });
+        });
+        </script>';
+
+        return $html;
+    }
+
+    /**
      * Get the system prompt for the AI assistant
      */
     public function get_system_prompt() {
-        $current_url = home_url(add_query_arg([], $_SERVER['REQUEST_URI'] ?? ''));
+        $current_path = $_SERVER['REQUEST_URI'] ?? '/';
+        // Strip the site's base path (e.g., /scope:default) from the URI
+        $site_path = wp_parse_url(home_url(), PHP_URL_PATH);
+        if ($site_path && $site_path !== '/' && strpos($current_path, $site_path) === 0) {
+            $current_path = substr($current_path, strlen($site_path)) ?: '/';
+        }
         $page_hints = $this->get_page_selector_hints();
         $wp_info = [
             'siteUrl' => get_site_url(),
-            'currentUrl' => $current_url,
+            'currentPath' => $current_path,
             'wpVersion' => get_bloginfo('version'),
             'theme' => get_template(),
             'phpVersion' => phpversion(),
@@ -1207,7 +1380,7 @@ class Settings {
 
 Current WordPress Information:
 - Site URL: {$wp_info['siteUrl']}
-- Current Page: {$wp_info['currentUrl']}
+- Current Page: {$wp_info['currentPath']}
 - WordPress Version: {$wp_info['wpVersion']}
 - Active Theme: {$wp_info['theme']}
 - PHP Version: {$wp_info['phpVersion']}";
@@ -1238,8 +1411,7 @@ FILE EDITING RULES:
 
 IMPORTANT: For any destructive operations (file deletion, database modification, file overwriting), the user will be asked to confirm before execution. Be clear about what changes you're proposing.
 
-ENVIRONMENT CONSTRAINTS:
-- Node and npm are not available in this environment. Do not attempt to use node, npm, npx, or related commands.
+SKILLS: Use list_skills and get_skill to load specialized knowledge on topics like block development, theme customization, or plugin patterns. Load a skill when you need detailed guidance beyond basic WordPress operations.
 
 Always explain what you're about to do before using tools.";
     }
