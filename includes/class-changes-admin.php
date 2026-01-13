@@ -22,6 +22,7 @@ class Changes_Admin {
         add_action('wp_ajax_ai_assistant_apply_patch', [$this, 'ajax_apply_patch']);
         add_action('wp_ajax_ai_assistant_revert_file', [$this, 'ajax_revert_file']);
         add_action('wp_ajax_ai_assistant_reapply_file', [$this, 'ajax_reapply_file']);
+        add_action('wp_ajax_ai_assistant_revert_files', [$this, 'ajax_revert_files']);
         add_action('admin_action_ai_assistant_download_diff', [$this, 'handle_diff_download']);
     }
 
@@ -72,6 +73,12 @@ class Changes_Admin {
                 'revertError' => __('Failed to revert file.', 'ai-assistant'),
                 'confirmReapply' => __('Are you sure you want to reapply the changes to this file?', 'ai-assistant'),
                 'reapplyError' => __('Failed to reapply changes.', 'ai-assistant'),
+                'revert' => __('Revert', 'ai-assistant'),
+                'reapply' => __('Reapply', 'ai-assistant'),
+                'revertTitle' => __('Revert this change', 'ai-assistant'),
+                'reapplyTitle' => __('Reapply this change', 'ai-assistant'),
+                'confirmRevertDir' => __('Are you sure you want to revert %d file(s) in this directory?', 'ai-assistant'),
+                'nothingToRevert' => __('No files to revert in this directory.', 'ai-assistant'),
             ],
         ]);
     }
@@ -154,6 +161,9 @@ class Changes_Admin {
                             ?><span class="ai-changes-dir-name"><?php echo esc_html($dir); ?><?php echo $is_file ? '' : '/'; ?></span>
                             <span class="ai-changes-count">(<?php echo esc_html($data['count']); ?> <?php echo $data['count'] === 1 ? 'change' : 'changes'; ?>)</span>
                         </label>
+                        <button type="button" class="button button-small ai-revert-dir" data-dir="<?php echo esc_attr($dir); ?>" title="<?php esc_attr_e('Revert all files in this directory', 'ai-assistant'); ?>">
+                            <?php esc_html_e('Revert All', 'ai-assistant'); ?>
+                        </button>
                     </div>
                     <div class="ai-changes-files" style="display: none;">
                         <?php foreach ($data['files'] as $file): ?>
@@ -427,6 +437,73 @@ class Changes_Admin {
         } catch (\Exception $e) {
             wp_send_json_error(['message' => $e->getMessage()]);
         }
+    }
+
+    public function ajax_revert_files(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $file_ids = isset($_POST['file_ids']) ? array_map('intval', (array) $_POST['file_ids']) : [];
+
+        if (empty($file_ids)) {
+            wp_send_json_error(['message' => 'No files specified']);
+        }
+
+        $reverted = [];
+        $errors = [];
+
+        foreach ($file_ids as $file_id) {
+            $change = $this->change_tracker->get_change($file_id);
+
+            if (!$change) {
+                $errors[] = sprintf(__('File %d not found', 'ai-assistant'), $file_id);
+                continue;
+            }
+
+            if ($change['is_reverted']) {
+                continue;
+            }
+
+            try {
+                $path = $change['path'];
+                $change_type = $change['change_type'];
+                $original_content = $change['original_content'];
+                $full_path = WP_CONTENT_DIR . '/' . $path;
+
+                $current_content = file_exists($full_path) ? file_get_contents($full_path) : '';
+
+                switch ($change_type) {
+                    case 'created':
+                        if (file_exists($full_path)) {
+                            unlink($full_path);
+                        }
+                        break;
+
+                    case 'modified':
+                    case 'deleted':
+                        if ($change['is_binary']) {
+                            $errors[] = sprintf(__('Cannot revert binary file: %s', 'ai-assistant'), $path);
+                            continue 2;
+                        }
+                        file_put_contents($full_path, $original_content);
+                        break;
+                }
+
+                $this->change_tracker->mark_reverted($file_id, $current_content);
+                $reverted[] = $file_id;
+            } catch (\Exception $e) {
+                $errors[] = $e->getMessage();
+            }
+        }
+
+        wp_send_json_success([
+            'reverted' => $reverted,
+            'errors' => $errors,
+            'message' => sprintf(__('%d file(s) reverted.', 'ai-assistant'), count($reverted)),
+        ]);
     }
 
     private function parse_patch(string $patch): array {

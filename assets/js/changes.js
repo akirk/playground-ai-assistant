@@ -108,6 +108,14 @@
                 var fileId = $(this).data('id');
                 self.reapplyFile(fileId, $(this));
             });
+
+            // Revert directory
+            $(document).on('click', '.ai-revert-dir', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var dir = $(this).data('dir');
+                self.revertDirectory(dir, $(this));
+            });
         },
 
         showPreviewPanel: function() {
@@ -324,13 +332,14 @@
             var originalText = $button.text();
             $button.text(aiChanges.strings.reverting).prop('disabled', true);
 
+            var self = this;
             $.post(aiChanges.ajaxUrl, {
                 action: 'ai_assistant_revert_file',
                 nonce: aiChanges.nonce,
                 file_id: fileId
             }, function(response) {
                 if (response.success) {
-                    location.reload();
+                    self.updateFileState(fileId, $button, true);
                 } else {
                     alert(response.data.message || aiChanges.strings.revertError);
                     $button.text(originalText).prop('disabled', false);
@@ -349,19 +358,104 @@
             var originalText = $button.text();
             $button.text(aiChanges.strings.reverting).prop('disabled', true);
 
+            var self = this;
             $.post(aiChanges.ajaxUrl, {
                 action: 'ai_assistant_reapply_file',
                 nonce: aiChanges.nonce,
                 file_id: fileId
             }, function(response) {
                 if (response.success) {
-                    location.reload();
+                    self.updateFileState(fileId, $button, false);
                 } else {
                     alert(response.data.message || aiChanges.strings.reapplyError);
                     $button.text(originalText).prop('disabled', false);
                 }
             }).fail(function() {
                 alert(aiChanges.strings.reapplyError);
+                $button.text(originalText).prop('disabled', false);
+            });
+        },
+
+        updateFileState: function(fileId, $button, isReverted) {
+            var $row = $button.closest('.ai-changes-file-row');
+            var $label = $row.find('label');
+            var $dateSpan = $label.find('.ai-changes-date');
+
+            if (isReverted) {
+                // Add reverted badge before the date
+                $('<span class="ai-changes-type ai-changes-type-reverted">Reverted</span>').insertBefore($dateSpan);
+                // Replace button with Reapply
+                $button
+                    .removeClass('ai-revert-file')
+                    .addClass('ai-reapply-file')
+                    .text(aiChanges.strings.reapply || 'Reapply')
+                    .prop('disabled', false)
+                    .attr('title', aiChanges.strings.reapplyTitle || 'Reapply this change');
+            } else {
+                // Remove reverted badge
+                $label.find('.ai-changes-type-reverted').remove();
+                // Replace button with Revert
+                $button
+                    .removeClass('ai-reapply-file')
+                    .addClass('ai-revert-file')
+                    .text(aiChanges.strings.revert || 'Revert')
+                    .prop('disabled', false)
+                    .attr('title', aiChanges.strings.revertTitle || 'Revert this change');
+            }
+
+            // Clear the inline preview cache so it reloads fresh diff next time
+            var $preview = $('.ai-file-inline-preview[data-id="' + fileId + '"]');
+            $preview.find('code').html('');
+        },
+
+        revertDirectory: function(dir, $button) {
+            var $directory = $('.ai-changes-directory[data-dir="' + dir + '"]');
+            var $revertButtons = $directory.find('.ai-revert-file');
+
+            if ($revertButtons.length === 0) {
+                alert(aiChanges.strings.nothingToRevert || 'No files to revert in this directory.');
+                return;
+            }
+
+            var fileCount = $revertButtons.length;
+            var confirmMsg = (aiChanges.strings.confirmRevertDir || 'Are you sure you want to revert %d file(s) in this directory?').replace('%d', fileCount);
+
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            var fileIds = [];
+            $revertButtons.each(function() {
+                fileIds.push($(this).data('id'));
+            });
+
+            var originalText = $button.text();
+            $button.text(aiChanges.strings.reverting).prop('disabled', true);
+
+            var self = this;
+            $.post(aiChanges.ajaxUrl, {
+                action: 'ai_assistant_revert_files',
+                nonce: aiChanges.nonce,
+                file_ids: fileIds
+            }, function(response) {
+                if (response.success) {
+                    var reverted = response.data.reverted || [];
+                    reverted.forEach(function(fileId) {
+                        var $fileButton = $directory.find('.ai-revert-file[data-id="' + fileId + '"]');
+                        if ($fileButton.length) {
+                            self.updateFileState(fileId, $fileButton, true);
+                        }
+                    });
+
+                    if (response.data.errors && response.data.errors.length > 0) {
+                        alert(response.data.message + '\n\nErrors:\n' + response.data.errors.join('\n'));
+                    }
+                } else {
+                    alert(response.data.message || aiChanges.strings.revertError);
+                }
+                $button.text(originalText).prop('disabled', false);
+            }).fail(function() {
+                alert(aiChanges.strings.revertError);
                 $button.text(originalText).prop('disabled', false);
             });
         }

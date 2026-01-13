@@ -1076,6 +1076,9 @@
                 return;
             }
 
+            // Save after tool execution so work can be resumed if interrupted
+            this.autoSaveConversation();
+
             // Continue the conversation
             this.callLLM();
         },
