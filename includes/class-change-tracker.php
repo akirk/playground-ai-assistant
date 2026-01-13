@@ -130,6 +130,7 @@ class Change_Tracker {
                 'relative_path' => substr($path, strlen($dir) + 1),
                 'change_type' => get_post_meta($post->ID, '_change_type', true),
                 'is_binary' => get_post_meta($post->ID, '_is_binary', true) === '1',
+                'is_reverted' => get_post_meta($post->ID, '_is_reverted', true) === '1',
                 'date' => $post->post_date,
             ];
             $directories[$dir]['count']++;
@@ -151,12 +152,19 @@ class Change_Tracker {
             $content = base64_decode($content);
         }
 
+        $reverted_content = get_post_meta($id, '_reverted_content', true);
+        if ($reverted_content && !$is_binary) {
+            $reverted_content = base64_decode($reverted_content);
+        }
+
         return [
             'id' => $post->ID,
             'path' => $post->post_title,
             'original_content' => $content,
+            'reverted_content' => $reverted_content ?: null,
             'change_type' => get_post_meta($id, '_change_type', true),
             'is_binary' => $is_binary,
+            'is_reverted' => get_post_meta($id, '_is_reverted', true) === '1',
             'content_truncated' => get_post_meta($id, '_content_truncated', true) === '1',
             'original_size' => (int) get_post_meta($id, '_original_size', true),
             'date' => $post->post_date,
@@ -367,6 +375,19 @@ class Change_Tracker {
     public function has_changes(): bool {
         $count = wp_count_posts(self::POST_TYPE);
         return isset($count->publish) && $count->publish > 0;
+    }
+
+    public function mark_reverted(int $id, string $content_before_revert): void {
+        $is_binary = $this->is_binary($content_before_revert);
+        $stored_content = $is_binary ? '[Binary file]' : base64_encode($content_before_revert);
+
+        update_post_meta($id, '_is_reverted', '1');
+        update_post_meta($id, '_reverted_content', $stored_content);
+    }
+
+    public function mark_reapplied(int $id): void {
+        update_post_meta($id, '_is_reverted', '0');
+        delete_post_meta($id, '_reverted_content');
     }
 
     private function is_binary(string $content): bool {

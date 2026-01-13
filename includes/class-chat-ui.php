@@ -200,8 +200,9 @@ class Chat_UI {
                 var $trigger = $('#ai-assistant-standalone-trigger');
                 var $button = $trigger.find('button');
 
-                // Show the standalone wrapper
+                // Show the standalone wrapper and remove hidden class from inner wrap
                 $wrap.show();
+                $('#ai-assistant-wrap').removeClass('hidden');
 
                 $button.on('click', function() {
                     var isExpanded = $button.attr('aria-expanded') === 'true';

@@ -73,7 +73,11 @@
 .ai-changes-file-row {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     padding: 8px 16px 8px 40px;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
 }
 
 .ai-changes-file-row:hover {
@@ -85,9 +89,11 @@
     border: none;
     padding: 0 8px 0 0;
     cursor: pointer;
-    font-size: 10px;
+    font-size: 12px;
     color: #646970;
     line-height: 1;
+    flex-shrink: 0;
+    min-width: 20px;
 }
 
 .ai-file-preview-toggle:hover {
@@ -104,13 +110,24 @@
     gap: 8px;
     cursor: pointer;
     flex: 1;
+    min-width: 0;
+}
+
+.ai-changes-file-row .ai-file-checkbox {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
 }
 
 .ai-changes-file-path {
     flex: 1;
+    min-width: 100px;
     font-family: monospace;
     font-size: 13px;
     color: #1d2327;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ai-changes-type {
@@ -119,6 +136,7 @@
     border-radius: 3px;
     font-weight: 500;
     text-transform: uppercase;
+    flex-shrink: 0;
 }
 
 .ai-changes-type-created {
@@ -136,12 +154,18 @@
     color: #721c24;
 }
 
+.ai-changes-type-reverted {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
 .ai-changes-binary {
     font-size: 11px;
     padding: 2px 6px;
     background: #e2e4e7;
     color: #646970;
     border-radius: 3px;
+    flex-shrink: 0;
 }
 
 .ai-changes-date {
@@ -149,6 +173,27 @@
     font-size: 12px;
     min-width: 80px;
     text-align: right;
+    flex-shrink: 0;
+}
+
+.ai-revert-file,
+.ai-reapply-file {
+    flex-shrink: 0;
+    margin-left: 1em !important;
+    padding: 2px 8px !important;
+    font-size: 11px !important;
+    min-height: 0 !important;
+    line-height: 1.4 !important;
+    color: #646970 !important;
+    border-color: #c3c4c7 !important;
+    background: #f6f7f7 !important;
+}
+
+.ai-revert-file:hover,
+.ai-reapply-file:hover {
+    color: #2271b1 !important;
+    border-color: #2271b1 !important;
+    background: #f0f7fc !important;
 }
 
 /* Inline file preview */
@@ -224,6 +269,7 @@
 
 /* Diff Preview - Fixed bottom panel */
 .ai-diff-preview {
+    display: none;
     position: fixed;
     bottom: 0;
     left: 160px;
@@ -233,7 +279,6 @@
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
     z-index: 100;
     max-height: 50vh;
-    display: flex;
     flex-direction: column;
 }
 
@@ -323,4 +368,27 @@
     padding: 20px;
     text-align: center;
     color: #646970;
+}
+
+/* Import Section */
+.ai-import-section {
+    margin-top: 30px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+}
+
+.ai-import-section h2 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.ai-import-section .description {
+    margin: 0 0 15px 0;
+}
+
+.ai-import-section #ai-import-patch {
+    min-width: 150px;
 }

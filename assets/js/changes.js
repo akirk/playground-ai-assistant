@@ -7,9 +7,6 @@
 
         init: function() {
             this.bindEvents();
-            // Show preview panel and auto-preview if there are selections
-            this.showPreviewPanel();
-            this.autoPreview();
         },
 
         bindEvents: function() {
@@ -95,10 +92,26 @@
                     $(this).val('');
                 }
             });
+
+            // Revert file
+            $(document).on('click', '.ai-revert-file', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var fileId = $(this).data('id');
+                self.revertFile(fileId, $(this));
+            });
+
+            // Reapply file
+            $(document).on('click', '.ai-reapply-file', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var fileId = $(this).data('id');
+                self.reapplyFile(fileId, $(this));
+            });
         },
 
         showPreviewPanel: function() {
-            $('#ai-diff-preview').show();
+            $('#ai-diff-preview').css('display', 'flex');
         },
 
         hidePreviewPanel: function() {
@@ -135,7 +148,7 @@
                 return;
             }
 
-            // Show panel if hidden (e.g., after user closed it)
+            // Show panel when files are selected
             this.showPreviewPanel();
 
             // Check if selection changed
@@ -300,6 +313,56 @@
                     alert(aiChanges.strings.importError);
                     $button.text(originalText).prop('disabled', false);
                 }
+            });
+        },
+
+        revertFile: function(fileId, $button) {
+            if (!confirm(aiChanges.strings.confirmRevert)) {
+                return;
+            }
+
+            var originalText = $button.text();
+            $button.text(aiChanges.strings.reverting).prop('disabled', true);
+
+            $.post(aiChanges.ajaxUrl, {
+                action: 'ai_assistant_revert_file',
+                nonce: aiChanges.nonce,
+                file_id: fileId
+            }, function(response) {
+                if (response.success) {
+                    location.reload();
+                } else {
+                    alert(response.data.message || aiChanges.strings.revertError);
+                    $button.text(originalText).prop('disabled', false);
+                }
+            }).fail(function() {
+                alert(aiChanges.strings.revertError);
+                $button.text(originalText).prop('disabled', false);
+            });
+        },
+
+        reapplyFile: function(fileId, $button) {
+            if (!confirm(aiChanges.strings.confirmReapply)) {
+                return;
+            }
+
+            var originalText = $button.text();
+            $button.text(aiChanges.strings.reverting).prop('disabled', true);
+
+            $.post(aiChanges.ajaxUrl, {
+                action: 'ai_assistant_reapply_file',
+                nonce: aiChanges.nonce,
+                file_id: fileId
+            }, function(response) {
+                if (response.success) {
+                    location.reload();
+                } else {
+                    alert(response.data.message || aiChanges.strings.reapplyError);
+                    $button.text(originalText).prop('disabled', false);
+                }
+            }).fail(function() {
+                alert(aiChanges.strings.reapplyError);
+                $button.text(originalText).prop('disabled', false);
             });
         }
     };

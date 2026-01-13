@@ -12,13 +12,16 @@ class Changes_Admin {
 
     public function __construct(Change_Tracker $change_tracker) {
         $this->change_tracker = $change_tracker;
-        $this->executor = new Executor($change_tracker);
+        $this->executor = new Executor(new Tools(), $change_tracker);
         add_action('admin_menu', [$this, 'add_admin_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
+        add_action('load-tools_page_ai-changes', [$this, 'add_help_tabs']);
         add_action('wp_ajax_ai_assistant_get_changes', [$this, 'ajax_get_changes']);
         add_action('wp_ajax_ai_assistant_generate_diff', [$this, 'ajax_generate_diff']);
         add_action('wp_ajax_ai_assistant_clear_changes', [$this, 'ajax_clear_changes']);
         add_action('wp_ajax_ai_assistant_apply_patch', [$this, 'ajax_apply_patch']);
+        add_action('wp_ajax_ai_assistant_revert_file', [$this, 'ajax_revert_file']);
+        add_action('wp_ajax_ai_assistant_reapply_file', [$this, 'ajax_reapply_file']);
         add_action('admin_action_ai_assistant_download_diff', [$this, 'handle_diff_download']);
     }
 
@@ -64,8 +67,55 @@ class Changes_Admin {
                 'importing' => __('Importing...', 'ai-assistant'),
                 'importSuccess' => __('Patch applied successfully! %d file(s) modified.', 'ai-assistant'),
                 'importError' => __('Failed to apply patch.', 'ai-assistant'),
+                'confirmRevert' => __('Are you sure you want to revert this file to its original state?', 'ai-assistant'),
+                'reverting' => __('...', 'ai-assistant'),
+                'revertError' => __('Failed to revert file.', 'ai-assistant'),
+                'confirmReapply' => __('Are you sure you want to reapply the changes to this file?', 'ai-assistant'),
+                'reapplyError' => __('Failed to reapply changes.', 'ai-assistant'),
             ],
         ]);
+    }
+
+    public function add_help_tabs(): void {
+        $screen = get_current_screen();
+
+        $screen->add_help_tab([
+            'id'      => 'ai-changes-overview',
+            'title'   => __('Overview', 'ai-assistant'),
+            'content' => '<p>' . __('The AI Changes page tracks all file modifications made by the AI Assistant. This allows you to review, export, revert, or reapply changes.', 'ai-assistant') . '</p>'
+                       . '<p>' . __('Changes are organized by directory and show the type of modification (created, modified, or deleted).', 'ai-assistant') . '</p>',
+        ]);
+
+        $screen->add_help_tab([
+            'id'      => 'ai-changes-actions',
+            'title'   => __('Actions', 'ai-assistant'),
+            'content' => '<p>' . __('Available actions:', 'ai-assistant') . '</p>'
+                       . '<ul>'
+                       . '<li><strong>' . __('Import Patch', 'ai-assistant') . '</strong> - ' . __('Upload a .patch, .diff, or .txt file to apply changes to your files.', 'ai-assistant') . '</li>'
+                       . '<li><strong>' . __('Download .patch', 'ai-assistant') . '</strong> - ' . __('Select files and download a unified diff patch file.', 'ai-assistant') . '</li>'
+                       . '<li><strong>' . __('Revert', 'ai-assistant') . '</strong> - ' . __('Restore a file to its original state before AI modification.', 'ai-assistant') . '</li>'
+                       . '<li><strong>' . __('Reapply', 'ai-assistant') . '</strong> - ' . __('Re-apply previously reverted changes.', 'ai-assistant') . '</li>'
+                       . '<li><strong>' . __('Clear History', 'ai-assistant') . '</strong> - ' . __('Remove all tracked changes from the list.', 'ai-assistant') . '</li>'
+                       . '</ul>',
+        ]);
+
+        $screen->add_help_tab([
+            'id'      => 'ai-changes-diff',
+            'title'   => __('Diff Preview', 'ai-assistant'),
+            'content' => '<p>' . __('Click the arrow (▶) next to any file to preview its diff inline.', 'ai-assistant') . '</p>'
+                       . '<p>' . __('Select multiple files using the checkboxes to see a combined diff in the preview panel at the bottom.', 'ai-assistant') . '</p>'
+                       . '<p>' . __('The diff shows:', 'ai-assistant') . '</p>'
+                       . '<ul>'
+                       . '<li><span style="color: #22863a;">+ Green lines</span> - ' . __('Added content', 'ai-assistant') . '</li>'
+                       . '<li><span style="color: #cb2431;">- Red lines</span> - ' . __('Removed content', 'ai-assistant') . '</li>'
+                       . '</ul>',
+        ]);
+
+        $screen->set_help_sidebar(
+            '<p><strong>' . __('For more information:', 'ai-assistant') . '</strong></p>'
+            . '<p><a href="' . esc_url(admin_url('tools.php?page=ai-conversations')) . '">' . __('AI Conversations', 'ai-assistant') . '</a></p>'
+            . '<p><a href="' . esc_url(admin_url('options-general.php?page=ai-assistant-settings')) . '">' . __('Plugin Settings', 'ai-assistant') . '</a></p>'
+        );
     }
 
     public function render_page(): void {
@@ -79,12 +129,8 @@ class Changes_Admin {
                 <?php esc_html_e('Track and export changes made by the AI assistant. Select files or directories to generate a unified diff patch.', 'ai-assistant'); ?>
             </p>
 
+            <?php if ($has_changes): ?>
             <div class="ai-changes-actions">
-                <input type="file" id="ai-patch-file" accept=".patch,.diff,.txt" style="display:none;">
-                <button type="button" class="button" id="ai-import-patch">
-                    <?php esc_html_e('Import Patch', 'ai-assistant'); ?>
-                </button>
-                <?php if ($has_changes): ?>
                 <button type="button" class="button" id="ai-select-all">
                     <?php esc_html_e('Select All', 'ai-assistant'); ?>
                 </button>
@@ -94,10 +140,7 @@ class Changes_Admin {
                 <button type="button" class="button" id="ai-clear-history">
                     <?php esc_html_e('Clear History', 'ai-assistant'); ?>
                 </button>
-                <?php endif; ?>
             </div>
-
-            <?php if ($has_changes): ?>
 
             <div class="ai-changes-tree">
                 <?php foreach ($directories as $dir => $data): ?>
@@ -125,6 +168,11 @@ class Changes_Admin {
                                     <span class="ai-changes-type ai-changes-type-<?php echo esc_attr($file['change_type']); ?>">
                                         <?php echo esc_html(ucfirst($file['change_type'])); ?>
                                     </span>
+                                    <?php if ($file['is_reverted']): ?>
+                                    <span class="ai-changes-type ai-changes-type-reverted">
+                                        <?php esc_html_e('Reverted', 'ai-assistant'); ?>
+                                    </span>
+                                    <?php endif; ?>
                                     <?php if ($file['is_binary']): ?>
                                     <span class="ai-changes-binary"><?php esc_html_e('Binary', 'ai-assistant'); ?></span>
                                     <?php endif; ?>
@@ -132,6 +180,15 @@ class Changes_Admin {
                                         <?php echo esc_html(human_time_diff(strtotime($file['date']), current_time('timestamp')) . ' ago'); ?>
                                     </span>
                                 </label>
+                                <?php if ($file['is_reverted']): ?>
+                                <button type="button" class="button button-small ai-reapply-file" data-id="<?php echo esc_attr($file['id']); ?>" title="<?php esc_attr_e('Reapply this change', 'ai-assistant'); ?>">
+                                    <?php esc_html_e('Reapply', 'ai-assistant'); ?>
+                                </button>
+                                <?php else: ?>
+                                <button type="button" class="button button-small ai-revert-file" data-id="<?php echo esc_attr($file['id']); ?>" title="<?php esc_attr_e('Revert this change', 'ai-assistant'); ?>">
+                                    <?php esc_html_e('Revert', 'ai-assistant'); ?>
+                                </button>
+                                <?php endif; ?>
                             </div>
                             <div class="ai-file-inline-preview" data-id="<?php echo esc_attr($file['id']); ?>" style="display: none;">
                                 <pre><code></code></pre>
@@ -156,12 +213,18 @@ class Changes_Admin {
                 </div>
                 <pre class="ai-diff-content"><code></code></pre>
             </div>
-            <?php else: ?>
-            <div class="ai-changes-empty">
-                <p><?php esc_html_e('No changes have been tracked yet.', 'ai-assistant'); ?></p>
-                <p class="description"><?php esc_html_e('Changes made through the AI assistant (file writes, edits, and deletions) will appear here.', 'ai-assistant'); ?></p>
-            </div>
             <?php endif; ?>
+
+            <div class="ai-import-section">
+                <h2><?php esc_html_e('Import Patch', 'ai-assistant'); ?></h2>
+                <p class="description">
+                    <?php esc_html_e('Apply a patch file to modify files in your wp-content directory. Supports unified diff format (.patch, .diff, or .txt files).', 'ai-assistant'); ?>
+                </p>
+                <input type="file" id="ai-patch-file" accept=".patch,.diff,.txt" style="display:none;">
+                <button type="button" class="button" id="ai-import-patch">
+                    <?php esc_html_e('Choose Patch File...', 'ai-assistant'); ?>
+                </button>
+            </div>
         </div>
         <?php
     }
@@ -244,6 +307,122 @@ class Changes_Admin {
             wp_send_json_success([
                 'modified' => $modified,
                 'message' => sprintf(__('%d file(s) modified.', 'ai-assistant'), $modified),
+            ]);
+        } catch (\Exception $e) {
+            wp_send_json_error(['message' => $e->getMessage()]);
+        }
+    }
+
+    public function ajax_revert_file(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $file_id = isset($_POST['file_id']) ? intval($_POST['file_id']) : 0;
+
+        if (!$file_id) {
+            wp_send_json_error(['message' => 'No file specified']);
+        }
+
+        $change = $this->change_tracker->get_change($file_id);
+
+        if (!$change) {
+            wp_send_json_error(['message' => 'Change not found']);
+        }
+
+        if ($change['is_reverted']) {
+            wp_send_json_error(['message' => 'File already reverted']);
+        }
+
+        try {
+            $path = $change['path'];
+            $change_type = $change['change_type'];
+            $original_content = $change['original_content'];
+            $full_path = WP_CONTENT_DIR . '/' . $path;
+
+            // Get current content before reverting (for reapply)
+            $current_content = file_exists($full_path) ? file_get_contents($full_path) : '';
+
+            switch ($change_type) {
+                case 'created':
+                    if (file_exists($full_path)) {
+                        unlink($full_path);
+                    }
+                    break;
+
+                case 'modified':
+                case 'deleted':
+                    if ($change['is_binary']) {
+                        wp_send_json_error(['message' => 'Cannot revert binary files']);
+                    }
+                    file_put_contents($full_path, $original_content);
+                    break;
+            }
+
+            $this->change_tracker->mark_reverted($file_id, $current_content);
+
+            wp_send_json_success([
+                'message' => __('File reverted successfully.', 'ai-assistant'),
+            ]);
+        } catch (\Exception $e) {
+            wp_send_json_error(['message' => $e->getMessage()]);
+        }
+    }
+
+    public function ajax_reapply_file(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $file_id = isset($_POST['file_id']) ? intval($_POST['file_id']) : 0;
+
+        if (!$file_id) {
+            wp_send_json_error(['message' => 'No file specified']);
+        }
+
+        $change = $this->change_tracker->get_change($file_id);
+
+        if (!$change) {
+            wp_send_json_error(['message' => 'Change not found']);
+        }
+
+        if (!$change['is_reverted']) {
+            wp_send_json_error(['message' => 'File is not reverted']);
+        }
+
+        try {
+            $path = $change['path'];
+            $change_type = $change['change_type'];
+            $reverted_content = $change['reverted_content'];
+            $full_path = WP_CONTENT_DIR . '/' . $path;
+
+            switch ($change_type) {
+                case 'created':
+                    // Recreate the file
+                    $dir = dirname($full_path);
+                    if (!file_exists($dir)) {
+                        mkdir($dir, 0755, true);
+                    }
+                    file_put_contents($full_path, $reverted_content);
+                    break;
+
+                case 'modified':
+                case 'deleted':
+                    if ($change['is_binary']) {
+                        wp_send_json_error(['message' => 'Cannot reapply binary files']);
+                    }
+                    file_put_contents($full_path, $reverted_content);
+                    break;
+            }
+
+            $this->change_tracker->mark_reapplied($file_id);
+
+            wp_send_json_success([
+                'message' => __('File changes reapplied successfully.', 'ai-assistant'),
             ]);
         } catch (\Exception $e) {
             wp_send_json_error(['message' => $e->getMessage()]);
