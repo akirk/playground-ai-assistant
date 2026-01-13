@@ -29,6 +29,26 @@ class Change_Tracker {
     }
 
     public function track_change(string $path, string $change_type, ?string $original_content = null): int {
+        $existing = $this->get_existing_change_for_path($path);
+
+        if ($existing) {
+            $existing_type = get_post_meta($existing->ID, '_change_type', true);
+
+            // If file was created and now modified, keep it as "created"
+            if ($existing_type === 'created' && $change_type === 'modified') {
+                return $existing->ID;
+            }
+
+            // If file was created and now deleted, remove the record entirely
+            if ($existing_type === 'created' && $change_type === 'deleted') {
+                wp_delete_post($existing->ID, true);
+                return 0;
+            }
+
+            // For other cases, remove old record and create new one
+            wp_delete_post($existing->ID, true);
+        }
+
         $is_binary = $original_content !== null && $this->is_binary($original_content);
         $content_truncated = false;
         $stored_content = '';
@@ -71,10 +91,22 @@ class Change_Tracker {
             'order' => 'DESC',
         ]);
 
-        $directories = [];
-
+        // Deduplicate: if a file was created and modified, keep only "created"
+        $by_path = [];
         foreach ($posts as $post) {
             $path = $post->post_title;
+            $change_type = get_post_meta($post->ID, '_change_type', true);
+
+            if (!isset($by_path[$path])) {
+                $by_path[$path] = $post;
+            } elseif ($change_type === 'created') {
+                $by_path[$path] = $post;
+            }
+        }
+
+        $directories = [];
+
+        foreach ($by_path as $path => $post) {
             $parts = explode('/', $path);
 
             // Get top two levels as directory (e.g., "plugins/my-plugin")
@@ -339,5 +371,16 @@ class Change_Tracker {
 
     private function is_binary(string $content): bool {
         return strpos($content, "\0") !== false;
+    }
+
+    private function get_existing_change_for_path(string $path): ?\WP_Post {
+        $posts = get_posts([
+            'post_type' => self::POST_TYPE,
+            'title' => $path,
+            'posts_per_page' => 1,
+            'post_status' => 'publish',
+        ]);
+
+        return !empty($posts) ? $posts[0] : null;
     }
 }

@@ -8,14 +8,17 @@ if (!defined('ABSPATH')) {
 class Changes_Admin {
 
     private $change_tracker;
+    private $executor;
 
     public function __construct(Change_Tracker $change_tracker) {
         $this->change_tracker = $change_tracker;
+        $this->executor = new Executor($change_tracker);
         add_action('admin_menu', [$this, 'add_admin_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
         add_action('wp_ajax_ai_assistant_get_changes', [$this, 'ajax_get_changes']);
         add_action('wp_ajax_ai_assistant_generate_diff', [$this, 'ajax_generate_diff']);
         add_action('wp_ajax_ai_assistant_clear_changes', [$this, 'ajax_clear_changes']);
+        add_action('wp_ajax_ai_assistant_apply_patch', [$this, 'ajax_apply_patch']);
         add_action('admin_action_ai_assistant_download_diff', [$this, 'handle_diff_download']);
     }
 
@@ -58,6 +61,9 @@ class Changes_Admin {
                 'confirmClear' => __('Are you sure you want to clear all tracked changes? This cannot be undone.', 'ai-assistant'),
                 'noSelection' => __('Please select at least one file to download.', 'ai-assistant'),
                 'clearing' => __('Clearing...', 'ai-assistant'),
+                'importing' => __('Importing...', 'ai-assistant'),
+                'importSuccess' => __('Patch applied successfully! %d file(s) modified.', 'ai-assistant'),
+                'importError' => __('Failed to apply patch.', 'ai-assistant'),
             ],
         ]);
     }
@@ -73,8 +79,12 @@ class Changes_Admin {
                 <?php esc_html_e('Track and export changes made by the AI assistant. Select files or directories to generate a unified diff patch.', 'ai-assistant'); ?>
             </p>
 
-            <?php if ($has_changes): ?>
             <div class="ai-changes-actions">
+                <input type="file" id="ai-patch-file" accept=".patch,.diff,.txt" style="display:none;">
+                <button type="button" class="button" id="ai-import-patch">
+                    <?php esc_html_e('Import Patch', 'ai-assistant'); ?>
+                </button>
+                <?php if ($has_changes): ?>
                 <button type="button" class="button" id="ai-select-all">
                     <?php esc_html_e('Select All', 'ai-assistant'); ?>
                 </button>
@@ -84,7 +94,10 @@ class Changes_Admin {
                 <button type="button" class="button" id="ai-clear-history">
                     <?php esc_html_e('Clear History', 'ai-assistant'); ?>
                 </button>
+                <?php endif; ?>
             </div>
+
+            <?php if ($has_changes): ?>
 
             <div class="ai-changes-tree">
                 <?php foreach ($directories as $dir => $data): ?>
@@ -195,6 +208,195 @@ class Changes_Admin {
             'deleted' => $deleted,
             'message' => sprintf(__('%d change(s) cleared.', 'ai-assistant'), $deleted),
         ]);
+    }
+
+    public function ajax_apply_patch(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        if (empty($_FILES['patch_file'])) {
+            wp_send_json_error(['message' => 'No file uploaded']);
+        }
+
+        $file = $_FILES['patch_file'];
+        $patch_content = file_get_contents($file['tmp_name']);
+
+        if ($patch_content === false) {
+            wp_send_json_error(['message' => 'Failed to read file']);
+        }
+
+        try {
+            $operations = $this->parse_patch($patch_content);
+
+            if (empty($operations)) {
+                wp_send_json_error(['message' => 'No valid operations found in patch']);
+            }
+
+            $modified = 0;
+            foreach ($operations as $op) {
+                $this->executor->execute_tool($op['tool'], $op['arguments']);
+                $modified++;
+            }
+
+            wp_send_json_success([
+                'modified' => $modified,
+                'message' => sprintf(__('%d file(s) modified.', 'ai-assistant'), $modified),
+            ]);
+        } catch (\Exception $e) {
+            wp_send_json_error(['message' => $e->getMessage()]);
+        }
+    }
+
+    private function parse_patch(string $patch): array {
+        $operations = [];
+        $blocks = preg_split('/^diff --git /m', $patch);
+
+        foreach ($blocks as $block) {
+            if (empty(trim($block))) {
+                continue;
+            }
+
+            $block = 'diff --git ' . $block;
+            $op = $this->parse_diff_block($block);
+            if ($op) {
+                $operations[] = $op;
+            }
+        }
+
+        return $operations;
+    }
+
+    private function parse_diff_block(string $block): ?array {
+        $lines = explode("\n", $block);
+
+        // Extract path from "diff --git a/path b/path"
+        if (!preg_match('/^diff --git a\/(.+) b\/(.+)$/', $lines[0], $matches)) {
+            return null;
+        }
+        $path = $matches[2];
+
+        $is_new_file = strpos($block, 'new file mode') !== false;
+        $is_deleted = strpos($block, 'deleted file mode') !== false;
+
+        if ($is_deleted) {
+            return [
+                'tool' => 'delete_file',
+                'arguments' => ['path' => $path],
+            ];
+        }
+
+        if ($is_new_file) {
+            $content = $this->extract_new_file_content($lines);
+            return [
+                'tool' => 'write_file',
+                'arguments' => [
+                    'path' => $path,
+                    'content' => $content,
+                ],
+            ];
+        }
+
+        // Modified file - need to apply hunks
+        $full_path = WP_CONTENT_DIR . '/' . $path;
+        if (!file_exists($full_path)) {
+            return null;
+        }
+
+        $original = file_get_contents($full_path);
+        $new_content = $this->apply_hunks($original, $lines);
+
+        if ($new_content === null) {
+            return null;
+        }
+
+        return [
+            'tool' => 'write_file',
+            'arguments' => [
+                'path' => $path,
+                'content' => $new_content,
+            ],
+        ];
+    }
+
+    private function extract_new_file_content(array $lines): string {
+        $content_lines = [];
+        $in_content = false;
+
+        foreach ($lines as $line) {
+            if (strpos($line, '@@') === 0) {
+                $in_content = true;
+                continue;
+            }
+            if ($in_content && isset($line[0]) && $line[0] === '+') {
+                $content_lines[] = substr($line, 1);
+            }
+        }
+
+        return implode("\n", $content_lines);
+    }
+
+    private function apply_hunks(string $original, array $diff_lines): ?string {
+        $original_lines = explode("\n", $original);
+        $result = $original_lines;
+        $offset = 0;
+
+        $hunks = $this->extract_hunks($diff_lines);
+
+        foreach ($hunks as $hunk) {
+            $start_line = $hunk['old_start'] - 1 + $offset;
+            $old_count = $hunk['old_count'];
+
+            // Remove old lines and insert new ones
+            array_splice($result, $start_line, $old_count, $hunk['new_lines']);
+
+            // Adjust offset for subsequent hunks
+            $offset += count($hunk['new_lines']) - $old_count;
+        }
+
+        return implode("\n", $result);
+    }
+
+    private function extract_hunks(array $lines): array {
+        $hunks = [];
+        $current_hunk = null;
+
+        foreach ($lines as $line) {
+            if (preg_match('/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/', $line, $matches)) {
+                if ($current_hunk) {
+                    $hunks[] = $current_hunk;
+                }
+                $current_hunk = [
+                    'old_start' => (int) $matches[1],
+                    'old_count' => isset($matches[2]) ? (int) $matches[2] : 1,
+                    'new_start' => (int) $matches[3],
+                    'new_count' => isset($matches[4]) ? (int) $matches[4] : 1,
+                    'new_lines' => [],
+                ];
+                continue;
+            }
+
+            if ($current_hunk === null) {
+                continue;
+            }
+
+            if (isset($line[0])) {
+                if ($line[0] === '+') {
+                    $current_hunk['new_lines'][] = substr($line, 1);
+                } elseif ($line[0] === ' ') {
+                    $current_hunk['new_lines'][] = substr($line, 1);
+                }
+                // Lines starting with '-' are removed (not added to new_lines)
+            }
+        }
+
+        if ($current_hunk) {
+            $hunks[] = $current_hunk;
+        }
+
+        return $hunks;
     }
 
     public function handle_diff_download(): void {

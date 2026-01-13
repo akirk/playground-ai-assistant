@@ -82,6 +82,19 @@
             $('#ai-clear-history').on('click', function() {
                 self.clearHistory();
             });
+
+            // Import patch - trigger file input
+            $('#ai-import-patch').on('click', function() {
+                $('#ai-patch-file').click();
+            });
+
+            // Handle patch file selection
+            $('#ai-patch-file').on('change', function() {
+                if (this.files && this.files[0]) {
+                    self.importPatch(this.files[0]);
+                    $(this).val('');
+                }
+            });
         },
 
         showPreviewPanel: function() {
@@ -121,6 +134,9 @@
                 this.currentFileIds = [];
                 return;
             }
+
+            // Show panel if hidden (e.g., after user closed it)
+            this.showPreviewPanel();
 
             // Check if selection changed
             if (JSON.stringify(fileIds) === JSON.stringify(this.currentFileIds)) {
@@ -252,6 +268,38 @@
             }).fail(function() {
                 alert('Failed to clear history');
                 $button.text(originalText).prop('disabled', false);
+            });
+        },
+
+        importPatch: function(file) {
+            var $button = $('#ai-import-patch');
+            var originalText = $button.text();
+            $button.text(aiChanges.strings.importing).prop('disabled', true);
+
+            var formData = new FormData();
+            formData.append('action', 'ai_assistant_apply_patch');
+            formData.append('nonce', aiChanges.nonce);
+            formData.append('patch_file', file);
+
+            $.ajax({
+                url: aiChanges.ajaxUrl,
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    if (response.success) {
+                        alert(aiChanges.strings.importSuccess.replace('%d', response.data.modified));
+                        location.reload();
+                    } else {
+                        alert(response.data.message || aiChanges.strings.importError);
+                        $button.text(originalText).prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    alert(aiChanges.strings.importError);
+                    $button.text(originalText).prop('disabled', false);
+                }
             });
         }
     };
