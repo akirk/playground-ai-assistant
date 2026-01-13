@@ -737,18 +737,28 @@ class Executor {
 
         if (!empty($category)) {
             $abilities = array_filter($abilities, function($ability) use ($category) {
-                return isset($ability['category']) && $ability['category'] === $category;
+                $cat = is_object($ability) ? ($ability->category ?? '') : ($ability['category'] ?? '');
+                return $cat === $category;
             });
         }
 
         $result = [];
         foreach ($abilities as $id => $ability) {
-            $result[] = [
-                'id' => $id,
-                'name' => $ability['name'] ?? $id,
-                'description' => $ability['description'] ?? '',
-                'category' => $ability['category'] ?? 'uncategorized',
-            ];
+            if (is_object($ability)) {
+                $result[] = [
+                    'id' => $ability->name ?? $id,
+                    'name' => $ability->label ?? $ability->name ?? $id,
+                    'description' => $ability->description ?? '',
+                    'category' => $ability->category ?? 'uncategorized',
+                ];
+            } else {
+                $result[] = [
+                    'id' => $id,
+                    'name' => $ability['name'] ?? $id,
+                    'description' => $ability['description'] ?? '',
+                    'category' => $ability['category'] ?? 'uncategorized',
+                ];
+            }
         }
 
         return [
@@ -770,6 +780,18 @@ class Executor {
 
         if ($ability === null) {
             throw new \Exception("Ability not found: $ability_id");
+        }
+
+        if (is_object($ability)) {
+            return [
+                'id' => $ability->name ?? $ability_id,
+                'name' => $ability->label ?? $ability->name ?? $ability_id,
+                'description' => $ability->description ?? '',
+                'category' => $ability->category ?? 'uncategorized',
+                'parameters' => $ability->parameters ?? [],
+                'permissions' => $ability->permissions ?? [],
+                'returns' => $ability->returns ?? null,
+            ];
         }
 
         return [
