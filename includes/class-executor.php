@@ -12,10 +12,12 @@ class Executor {
 
     private $tools;
     private $wp_content_path;
+    private $change_tracker;
 
-    public function __construct(Tools $tools) {
+    public function __construct(Tools $tools, ?Change_Tracker $change_tracker = null) {
         $this->tools = $tools;
         $this->wp_content_path = WP_CONTENT_DIR;
+        $this->change_tracker = $change_tracker;
     }
 
     /**
@@ -225,6 +227,11 @@ class Executor {
         $existed = file_exists($full_path);
         $old_content = $existed ? file_get_contents($full_path) : null;
 
+        // Track change before writing
+        if ($this->change_tracker) {
+            $this->change_tracker->track_change($path, $existed ? 'modified' : 'created', $old_content);
+        }
+
         if (file_put_contents($full_path, $content) === false) {
             throw new \Exception("Failed to write file: $path");
         }
@@ -253,6 +260,11 @@ class Executor {
         }
 
         $original_content = $content;
+
+        // Track change before editing
+        if ($this->change_tracker) {
+            $this->change_tracker->track_change($path, 'modified', $original_content);
+        }
         $applied = [];
         $failed = [];
 
@@ -308,6 +320,12 @@ class Executor {
 
         if (!file_exists($full_path)) {
             throw new \Exception("File not found: $path");
+        }
+
+        // Track change before deleting
+        if ($this->change_tracker && !is_dir($full_path)) {
+            $original_content = file_get_contents($full_path);
+            $this->change_tracker->track_change($path, 'deleted', $original_content !== false ? $original_content : null);
         }
 
         if (is_dir($full_path)) {

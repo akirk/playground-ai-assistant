@@ -1,0 +1,326 @@
+.ai-changes-wrap {
+    max-width: 900px;
+}
+
+.ai-changes-actions {
+    margin: 20px 0;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ai-changes-tree {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+}
+
+.ai-changes-directory {
+    border-bottom: 1px solid #e2e4e7;
+}
+
+.ai-changes-directory:last-child {
+    border-bottom: none;
+}
+
+.ai-changes-directory-header {
+    padding: 12px 16px;
+    background: #f6f7f7;
+    cursor: pointer;
+}
+
+.ai-changes-directory-header:hover {
+    background: #f0f0f1;
+}
+
+.ai-changes-directory-header label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.ai-changes-toggle {
+    font-size: 10px;
+    color: #646970;
+    user-select: none;
+    width: 12px;
+}
+
+.ai-changes-dir-name {
+    color: #1d2327;
+}
+
+.ai-changes-count {
+    color: #646970;
+    font-weight: 400;
+    font-size: 13px;
+}
+
+.ai-changes-files {
+    padding: 4px 0;
+}
+
+.ai-changes-file {
+    border-top: 1px solid #f0f0f1;
+}
+
+.ai-changes-file:first-child {
+    border-top: 1px solid #e2e4e7;
+}
+
+.ai-changes-file-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px 8px 40px;
+}
+
+.ai-changes-file-row:hover {
+    background: #f9f9f9;
+}
+
+.ai-file-preview-toggle {
+    background: none;
+    border: none;
+    padding: 0 8px 0 0;
+    cursor: pointer;
+    font-size: 10px;
+    color: #646970;
+    line-height: 1;
+}
+
+.ai-file-preview-toggle:hover {
+    color: #2271b1;
+}
+
+.ai-file-preview-toggle.expanded {
+    color: #2271b1;
+}
+
+.ai-changes-file-row label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    flex: 1;
+}
+
+.ai-changes-file-path {
+    flex: 1;
+    font-family: monospace;
+    font-size: 13px;
+    color: #1d2327;
+}
+
+.ai-changes-type {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.ai-changes-type-created {
+    background: #d4edda;
+    color: #155724;
+}
+
+.ai-changes-type-modified {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.ai-changes-type-deleted {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.ai-changes-binary {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: #e2e4e7;
+    color: #646970;
+    border-radius: 3px;
+}
+
+.ai-changes-date {
+    color: #646970;
+    font-size: 12px;
+    min-width: 80px;
+    text-align: right;
+}
+
+/* Inline file preview */
+.ai-file-inline-preview {
+    margin: 0 16px 8px 56px;
+    background: #f6f7f7;
+    border: 1px solid #e2e4e7;
+    border-radius: 3px;
+    max-height: 300px;
+    overflow: auto;
+}
+
+.ai-file-inline-preview pre {
+    margin: 0;
+    padding: 10px 12px;
+    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.ai-file-inline-preview code {
+    background: none;
+    padding: 0;
+    white-space: pre;
+    display: block;
+}
+
+.ai-file-inline-preview .diff-header {
+    color: #2271b1;
+    font-weight: 600;
+}
+
+.ai-file-inline-preview .diff-file {
+    color: #50575e;
+}
+
+.ai-file-inline-preview .diff-hunk {
+    color: #9a6700;
+    margin-top: 4px;
+}
+
+.ai-file-inline-preview .diff-add {
+    color: #007017;
+    background: #d4edda;
+}
+
+.ai-file-inline-preview .diff-del {
+    color: #8a1f1f;
+    background: #f8d7da;
+}
+
+.ai-file-inline-preview .loading {
+    color: #646970;
+    padding: 12px;
+    text-align: center;
+}
+
+.ai-changes-empty {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 40px;
+    text-align: center;
+}
+
+.ai-changes-empty p {
+    margin: 0 0 10px;
+}
+
+.ai-changes-empty .description {
+    margin-bottom: 0;
+}
+
+/* Diff Preview - Fixed bottom panel */
+.ai-diff-preview {
+    position: fixed;
+    bottom: 0;
+    left: 160px;
+    right: 0;
+    background: #f0f0f1;
+    border-top: 1px solid #c3c4c7;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    max-height: 50vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.folded .ai-diff-preview {
+    left: 36px;
+}
+
+@media screen and (max-width: 782px) {
+    .ai-diff-preview {
+        left: 0;
+    }
+}
+
+.ai-diff-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: #fff;
+    border-bottom: 1px solid #c3c4c7;
+    flex-shrink: 0;
+}
+
+.ai-diff-preview-header h2 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.ai-diff-preview-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.ai-diff-content {
+    margin: 0;
+    padding: 12px 16px;
+    overflow: auto;
+    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    background: #f0f0f1;
+    color: #1d2327;
+    flex: 1;
+    min-height: 0;
+}
+
+.ai-diff-content code {
+    background: none;
+    padding: 0;
+    font-family: inherit;
+    white-space: pre;
+    display: block;
+}
+
+/* Diff syntax highlighting */
+.ai-diff-content .diff-header {
+    color: #2271b1;
+    font-weight: 600;
+    margin-top: 12px;
+}
+
+.ai-diff-content .diff-header:first-child {
+    margin-top: 0;
+}
+
+.ai-diff-content .diff-file {
+    color: #50575e;
+}
+
+.ai-diff-content .diff-hunk {
+    color: #9a6700;
+    margin-top: 8px;
+}
+
+.ai-diff-content .diff-add {
+    color: #007017;
+    background: #d4edda;
+}
+
+.ai-diff-content .diff-del {
+    color: #8a1f1f;
+    background: #f8d7da;
+}
+
+.ai-diff-preview-empty {
+    padding: 20px;
+    text-align: center;
+    color: #646970;
+}
