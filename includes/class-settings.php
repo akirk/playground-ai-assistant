@@ -16,29 +16,9 @@ class Settings {
         $this->encryption_key = $this->get_encryption_key();
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('admin_init', [$this, 'register_settings']);
-        add_action('wp_ajax_ai_assistant_save_model', [$this, 'ajax_save_model']);
         add_action('wp_ajax_ai_assistant_get_skill', [$this, 'ajax_get_skill']);
         add_action('load-tools_page_ai-conversations', [$this, 'add_help_tabs']);
         add_action('load-settings_page_ai-assistant-settings', [$this, 'add_help_tabs']);
-    }
-
-    /**
-     * AJAX handler to save model selection
-     */
-    public function ajax_save_model() {
-        check_ajax_referer('ai_assistant_settings', '_wpnonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => 'Permission denied']);
-        }
-
-        $model = sanitize_text_field($_POST['model'] ?? '');
-        if (empty($model)) {
-            wp_send_json_error(['message' => 'Model is required']);
-        }
-
-        update_option('ai_assistant_model', $model);
-        wp_send_json_success(['model' => $model]);
     }
 
     public function ajax_get_skill() {
@@ -115,10 +95,14 @@ class Settings {
         if (empty($data)) {
             return '';
         }
-        $data = base64_decode($data);
-        $iv = substr($data, 0, 16);
-        $encrypted = substr($data, 16);
-        return openssl_decrypt($encrypted, 'AES-256-CBC', $this->encryption_key, 0, $iv);
+        $decoded = base64_decode($data);
+        if ($decoded === false || strlen($decoded) < 17) {
+            return '';
+        }
+        $iv = substr($decoded, 0, 16);
+        $encrypted = substr($decoded, 16);
+        $result = openssl_decrypt($encrypted, 'AES-256-CBC', $this->encryption_key, 0, $iv);
+        return $result === false ? '' : $result;
     }
 
     /**
@@ -547,11 +531,15 @@ class Settings {
         <button type="button" class="button" id="ai-refresh-models">
             <?php esc_html_e('Refresh Models', 'ai-assistant'); ?>
         </button>
+        <?php
+        $anthropic_key = $this->get_api_key('anthropic');
+        $openai_key = $this->get_api_key('openai');
+        ?>
         <script>
             var aiAssistantCurrentModel = '<?php echo esc_js($model); ?>';
             var aiAssistantCurrentProvider = '<?php echo esc_js($provider); ?>';
-            var aiAssistantSettingsNonce = '<?php echo wp_create_nonce('ai_assistant_settings'); ?>';
-            var aiAssistantAjaxUrl = '<?php echo admin_url('admin-ajax.php'); ?>';
+            var aiAssistantAnthropicKey = '<?php echo esc_js($anthropic_key); ?>';
+            var aiAssistantOpenAIKey = '<?php echo esc_js($openai_key); ?>';
         </script>
         <?php
     }
@@ -619,12 +607,13 @@ class Settings {
             </form>
         </div>
         <style>
-            .ai-provider-field[data-provider] { display: none; }
-            .ai-provider-field[data-provider="<?php echo esc_attr(get_option('ai_assistant_provider', 'anthropic')); ?>"] {
-                display: inline-block;
-            }
-            tr:has(.ai-provider-field[data-provider]:not([data-provider="<?php echo esc_attr(get_option('ai_assistant_provider', 'anthropic')); ?>"])) {
-                display: none;
+            /* Hide all provider-specific rows by default */
+            .ai-provider-row { display: none; }
+            /* Show rows matching the current provider */
+            .ai-settings-form[data-provider="anthropic"] .ai-provider-row[data-provider="anthropic"],
+            .ai-settings-form[data-provider="openai"] .ai-provider-row[data-provider="openai"],
+            .ai-settings-form[data-provider="local"] .ai-provider-row[data-provider="local"] {
+                display: table-row;
             }
             .ai-connection-status { margin-left: 10px; }
             .ai-connection-status.success { color: green; }
@@ -632,19 +621,29 @@ class Settings {
         </style>
         <script>
         jQuery(function($) {
+            // Add data-provider attribute to the form and provider-specific rows
+            var $form = $('#ai_assistant_provider').closest('form');
+            $form.addClass('ai-settings-form').attr('data-provider', $('#ai_assistant_provider').val());
+
+            // Mark provider-specific rows
+            $('.ai-provider-field[data-provider]').each(function() {
+                $(this).closest('tr').addClass('ai-provider-row').attr('data-provider', $(this).data('provider'));
+            });
+
             // Show/hide provider-specific fields
             $('#ai_assistant_provider').on('change', function() {
                 var provider = $(this).val();
-                $('.ai-provider-field').closest('tr').hide();
-                $('.ai-provider-field[data-provider="' + provider + '"]').closest('tr').show();
+                $form.attr('data-provider', provider);
                 loadModels(provider);
             });
 
             // Fetch OpenAI models from API
             async function fetchOpenAIModels() {
-                var apiKey = $('#ai_assistant_openai_api_key').val();
+                // Use stored decrypted key, or fall back to form value if user just entered a new one
+                var formKey = $('#ai_assistant_openai_api_key').val();
+                var apiKey = (formKey && formKey.indexOf('***') !== 0) ? formKey : aiAssistantOpenAIKey;
 
-                if (!apiKey || apiKey.indexOf('***') === 0) {
+                if (!apiKey) {
                     return null;
                 }
 
@@ -686,9 +685,11 @@ class Settings {
 
             // Fetch Anthropic models from API
             async function fetchAnthropicModels() {
-                var apiKey = $('#ai_assistant_anthropic_api_key').val();
+                // Use stored decrypted key, or fall back to form value if user just entered a new one
+                var formKey = $('#ai_assistant_anthropic_api_key').val();
+                var apiKey = (formKey && formKey.indexOf('***') !== 0) ? formKey : aiAssistantAnthropicKey;
 
-                if (!apiKey || apiKey.indexOf('***') === 0) {
+                if (!apiKey) {
                     return null;
                 }
 
@@ -723,8 +724,10 @@ class Settings {
 
                 switch (provider) {
                     case 'anthropic':
-                        var apiKey = $('#ai_assistant_anthropic_api_key').val();
-                        if (!apiKey || apiKey.indexOf('***') === 0) {
+                        var formKey = $('#ai_assistant_anthropic_api_key').val();
+                        var hasSavedKey = formKey && formKey.indexOf('***') === 0;
+                        var apiKey = hasSavedKey ? aiAssistantAnthropicKey : formKey;
+                        if (!apiKey) {
                             $select.html('<option value="">Enter API key to load models</option>');
                             return;
                         }
@@ -732,39 +735,29 @@ class Settings {
                         fetchAnthropicModels().then(function(models) {
                             $select.empty();
                             if (models && models.length > 0) {
-                                // Default to latest Sonnet if no model selected
                                 var selectedModel = aiAssistantCurrentModel;
-                                var shouldSave = false;
                                 if (!selectedModel) {
                                     var sonnet = models.find(function(m) {
                                         return m.id.indexOf('sonnet') > -1 && m.id.indexOf('4-5') > -1;
                                     });
                                     if (sonnet) {
                                         selectedModel = sonnet.id;
-                                        aiAssistantCurrentModel = selectedModel;
-                                        shouldSave = true;
                                     }
                                 }
                                 models.forEach(function(model) {
                                     var selected = model.id === selectedModel ? 'selected' : '';
                                     $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
                                 });
-                                // Auto-save if we selected a default model
-                                if (shouldSave && selectedModel) {
-                                    $.post(aiAssistantAjaxUrl, {
-                                        action: 'ai_assistant_save_model',
-                                        model: selectedModel,
-                                        _wpnonce: aiAssistantSettingsNonce
-                                    });
-                                }
                             } else {
                                 $select.html('<option value="">Failed to load models - check API key</option>');
                             }
                         });
                         return;
                     case 'openai':
-                        var openaiKey = $('#ai_assistant_openai_api_key').val();
-                        if (!openaiKey || openaiKey.indexOf('***') === 0) {
+                        var openaiFormKey = $('#ai_assistant_openai_api_key').val();
+                        var openaiHasSavedKey = openaiFormKey && openaiFormKey.indexOf('***') === 0;
+                        var openaiKey = openaiHasSavedKey ? aiAssistantOpenAIKey : openaiFormKey;
+                        if (!openaiKey) {
                             $select.html('<option value="">Enter API key to load models</option>');
                             return;
                         }
@@ -773,31 +766,18 @@ class Settings {
                             $select.empty();
                             if (models && models.length > 0) {
                                 var selectedModel = aiAssistantCurrentModel;
-                                var shouldSave = false;
                                 if (!selectedModel) {
-                                    // Prefer gpt-4o
                                     var preferred = models.find(function(m) { return m.id === 'gpt-4o'; });
                                     if (preferred) {
                                         selectedModel = preferred.id;
-                                        aiAssistantCurrentModel = selectedModel;
-                                        shouldSave = true;
                                     } else if (models.length > 0) {
                                         selectedModel = models[0].id;
-                                        aiAssistantCurrentModel = selectedModel;
-                                        shouldSave = true;
                                     }
                                 }
                                 models.forEach(function(model) {
                                     var selected = model.id === selectedModel ? 'selected' : '';
                                     $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
                                 });
-                                if (shouldSave && selectedModel) {
-                                    $.post(aiAssistantAjaxUrl, {
-                                        action: 'ai_assistant_save_model',
-                                        model: selectedModel,
-                                        _wpnonce: aiAssistantSettingsNonce
-                                    });
-                                }
                             } else {
                                 $select.html('<option value="">Failed to load models - check API key</option>');
                             }
@@ -867,23 +847,13 @@ class Settings {
                 $select.empty();
                 if (models.length > 0) {
                     var selectedModel = aiAssistantCurrentModel;
-                    var shouldSave = false;
                     if (!selectedModel) {
                         selectedModel = models[0].id;
-                        aiAssistantCurrentModel = selectedModel;
-                        shouldSave = true;
                     }
                     models.forEach(function(model) {
                         var selected = model.id === selectedModel ? 'selected' : '';
                         $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
                     });
-                    if (shouldSave && selectedModel) {
-                        $.post(aiAssistantAjaxUrl, {
-                            action: 'ai_assistant_save_model',
-                            model: selectedModel,
-                            _wpnonce: aiAssistantSettingsNonce
-                        });
-                    }
                 } else {
                     $select.html('<option value="">No models found - check if server is running</option>');
                 }
@@ -911,9 +881,10 @@ class Settings {
             });
 
             async function testAnthropicConnection($status) {
-                var apiKey = $('#ai_assistant_anthropic_api_key').val();
+                var formKey = $('#ai_assistant_anthropic_api_key').val();
+                var apiKey = (formKey && formKey.indexOf('***') !== 0) ? formKey : aiAssistantAnthropicKey;
 
-                if (!apiKey || apiKey.indexOf('***') === 0) {
+                if (!apiKey) {
                     $status.text('Enter API key first').addClass('error');
                     return;
                 }
@@ -955,9 +926,10 @@ class Settings {
             }
 
             async function testOpenAIConnection($status) {
-                var apiKey = $('#ai_assistant_openai_api_key').val();
+                var formKey = $('#ai_assistant_openai_api_key').val();
+                var apiKey = (formKey && formKey.indexOf('***') !== 0) ? formKey : aiAssistantOpenAIKey;
 
-                if (!apiKey || apiKey.indexOf('***') === 0) {
+                if (!apiKey) {
                     $status.text('Enter API key first').addClass('error');
                     return;
                 }
@@ -1065,24 +1037,28 @@ class Settings {
             // Initial load
             loadModels(aiAssistantCurrentProvider);
 
-            // Make permissions section collapsible (collapsed by default)
-            var $permissionsHeading = $('h2:contains("Role Permissions")');
-            if ($permissionsHeading.length) {
-                $permissionsHeading.css('cursor', 'pointer')
-                    .append(' <span class="dashicons dashicons-arrow-down-alt2" style="vertical-align: middle;"></span>');
+            // Make sections collapsible (collapsed by default)
+            function makeCollapsible(headingText, wrapperClass) {
+                var $heading = $('h2:contains("' + headingText + '")');
+                if ($heading.length) {
+                    $heading.css('cursor', 'pointer')
+                        .append(' <span class="dashicons dashicons-arrow-down-alt2" style="vertical-align: middle;"></span>');
 
-                // Wrap all content after the heading until the next h2 or submit button
-                var $content = $permissionsHeading.nextUntil('h2, .submit, p.submit');
-                $content.wrapAll('<div class="ai-permissions-content"></div>');
-                var $wrapper = $('.ai-permissions-content');
-                $wrapper.hide();
+                    var $content = $heading.nextUntil('h2, .submit, p.submit');
+                    $content.wrapAll('<div class="' + wrapperClass + '"></div>');
+                    var $wrapper = $('.' + wrapperClass);
+                    $wrapper.hide();
 
-                $permissionsHeading.on('click', function() {
-                    $wrapper.slideToggle(200);
-                    var $icon = $(this).find('.dashicons');
-                    $icon.toggleClass('dashicons-arrow-down-alt2 dashicons-arrow-up-alt2');
-                });
+                    $heading.on('click', function() {
+                        $wrapper.slideToggle(200);
+                        var $icon = $(this).find('.dashicons');
+                        $icon.toggleClass('dashicons-arrow-down-alt2 dashicons-arrow-up-alt2');
+                    });
+                }
             }
+
+            makeCollapsible('Role Permissions', 'ai-permissions-content');
+            makeCollapsible('Display Settings', 'ai-display-content');
         });
         </script>
         <?php
