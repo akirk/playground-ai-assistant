@@ -150,8 +150,11 @@
 
             // Toggle full height mode
             $(document).on('click', '#ai-assistant-expand', function() {
-                $('.ai-assistant-chat-container').toggleClass('expanded');
-                $(this).text($(this).text() === '⤢' ? '⤡' : '⤢');
+                var $container = $('.ai-assistant-chat-container');
+                var isExpanded = $container.toggleClass('expanded').hasClass('expanded');
+                $(this).find('.ai-expand-icon').toggle(!isExpanded);
+                $(this).find('.ai-collapse-icon').toggle(isExpanded);
+                $(this).attr('title', isExpanded ? 'Collapse' : 'Expand');
             });
 
             // Save conversation button
@@ -284,7 +287,7 @@
         open: function() {
             $('#ai-assistant-drawer').addClass('open');
             this.isOpen = true;
-            this.scrollToBottom();
+            this.scrollToBottom(true);
             $('#ai-assistant-input').focus();
 
             // Backup: load most recent conversation if hover didn't trigger
@@ -536,9 +539,11 @@
                 this.conversationModel = aiAssistantConfig.model;
                 this.pendingNewChat = false;
                 $('#ai-assistant-messages').removeClass('ai-pending-new-chat').empty();
+                $('#ai-token-count').show();
                 $('#ai-assistant-pending-actions').empty().hide();
                 $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
                 this.updateSidebarSelection();
+                this.loadWelcomeMessage();
             }
 
             this.addToDraftHistory(message);
@@ -848,7 +853,6 @@
         executeSingleTool: function(toolCall) {
             var self = this;
             var toolName = toolCall.name || toolCall.tool;
-            console.log('[AI Assistant] Executing tool:', toolName, 'with arguments:', toolCall.arguments);
 
             // Handle client-side tools
             if (toolName === 'get_page_html') {
@@ -866,7 +870,6 @@
                         arguments: JSON.stringify(toolCall.arguments)
                     },
                     success: function(response) {
-                        console.log('[AI Assistant] Tool response for', toolName, ':', response);
 
                         var errorMessage = '';
                         if (!response.success) {
@@ -1193,7 +1196,6 @@
 
         addMessage: function(role, content, extraClass) {
             var $messages = $('#ai-assistant-messages');
-            console.log('[AI Assistant] addMessage called, role:', role, '$messages.length:', $messages.length);
 
             var messageClass = 'ai-message ai-message-' + role;
             if (extraClass) {
@@ -1206,7 +1208,6 @@
                 '</div>');
 
             $messages.append($message);
-            console.log('[AI Assistant] Message appended, $messages children:', $messages.children().length);
             this.scrollToBottom();
         },
 
@@ -1523,6 +1524,7 @@
             if (this.messages.length > 0 && !this.pendingNewChat) {
                 this.pendingNewChat = true;
                 $('#ai-assistant-messages').addClass('ai-pending-new-chat');
+                $('#ai-token-count').hide();
                 $('#ai-assistant-new-chat').text('Undo').attr('id', 'ai-assistant-undo-new-chat');
                 $('#ai-assistant-input').focus();
                 return;
@@ -1539,6 +1541,7 @@
             this.updateSendButton();
             this.updateTokenCount();
             $('#ai-assistant-messages').removeClass('ai-pending-new-chat').empty();
+            $('#ai-token-count').show();
             $('#ai-assistant-pending-actions').empty().hide();
             $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
             this.updateSidebarSelection();
@@ -1549,19 +1552,24 @@
         undoNewChat: function() {
             this.pendingNewChat = false;
             $('#ai-assistant-messages').removeClass('ai-pending-new-chat');
+            $('#ai-token-count').show();
             $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
             this.scrollToBottom();
             $('#ai-assistant-input').focus();
         },
 
-        loadWelcomeMessage: function() {
+        loadWelcomeMessage: function(provider, model) {
             var config = aiAssistantConfig;
-            if (!config.apiKey && config.provider !== 'local') {
+            var useProvider = provider || config.provider;
+            var useModel = model || config.model;
+
+            if (!config.apiKey && useProvider !== 'local') {
                 this.addMessage('system', 'Welcome! Please configure your API key in [Settings](' + config.settingsUrl + ') to start chatting.', 'ai-welcome-message');
             } else {
-                var providerName = config.provider === 'anthropic' ? 'Anthropic' :
-                                   config.provider === 'openai' ? 'OpenAI' : 'Local LLM';
-                var modelInfo = config.model ? ' (' + config.model + ')' : '';
+                var providerName = useProvider === 'anthropic' ? 'Anthropic' :
+                                   useProvider === 'openai' ? 'OpenAI' :
+                                   useProvider === 'local' ? 'Local LLM' : useProvider;
+                var modelInfo = useModel ? ' (' + useModel + ')' : '';
                 this.addMessage('assistant', 'Hello! I\'m your Playground AI Assistant. I can help you manage your WordPress installation - read and modify files, manage plugins, query the database, and more. What would you like to do?', 'ai-welcome-message');
                 this.addMessage('system', 'You\'re chatting with **' + providerName + '**' + modelInfo, 'ai-model-info');
             }
@@ -1732,8 +1740,27 @@
             return e.returnValue;
         },
 
-        scrollToBottom: function() {
+        isNearBottom: function() {
             var $messages = $('#ai-assistant-messages');
+            if (!$messages.length || !$messages[0]) return true;
+
+            var threshold = 100; // pixels from bottom
+            var scrollTop = $messages.scrollTop();
+            var scrollHeight = $messages[0].scrollHeight;
+            var clientHeight = $messages[0].clientHeight;
+
+            return (scrollHeight - scrollTop - clientHeight) < threshold;
+        },
+
+        scrollToBottom: function(force) {
+            var $messages = $('#ai-assistant-messages');
+            if (!$messages.length || !$messages[0]) return;
+
+            // Don't auto-scroll if user has scrolled up (unless forced)
+            if (!force && !this.isNearBottom()) {
+                return;
+            }
+
             // On mobile (full page), the page scrolls instead of the container
             if (this.isFullPage && window.innerWidth <= 782) {
                 window.scrollTo(0, document.body.scrollHeight);
@@ -1774,7 +1801,6 @@
                         if (!silent) {
                             self.addMessage('system', 'Conversation saved.');
                         }
-                        console.log('[AI Assistant] Conversation saved:', response.data);
 
                         // Refresh sidebar if new conversation
                         if (isNew && self.isFullPage) {
@@ -1927,23 +1953,18 @@
                         self.updateSendButton();
                         self.updateTokenCount();
 
+                        // Show welcome message with provider/model info at the top
+                        self.loadWelcomeMessage(convProvider, convModel);
+
+                        // Then rebuild the conversation messages
                         self.rebuildMessagesUI();
 
-                        // Show conversation's provider/model info at the bottom
-                        if (response.data.provider || response.data.model) {
-                            var providerName = convProvider === 'anthropic' ? 'Anthropic' :
-                                               convProvider === 'openai' ? 'OpenAI' :
-                                               convProvider === 'local' ? 'Local LLM' : convProvider;
-                            var modelInfo = convModel ? ' (' + convModel + ')' : '';
-                            self.addMessage('system', 'You\'re chatting with **' + providerName + '**' + modelInfo);
-                        }
                         self.updateSidebarSelection();
                         $('#ai-assistant-input').focus();
 
                         // Auto-read files that were worked on in this conversation
                         self.autoReadConversationFiles();
 
-                        console.log('[AI Assistant] Conversation loaded:', response.data);
                     } else {
                         self.addMessage('error', 'Failed to load: ' + (response.data.message || 'Unknown error'));
                     }
@@ -1980,7 +2001,6 @@
 
             // Remove old read_file tool calls and their results to reduce context
             if (readFileToolIds.size > 0) {
-                console.log('[AI Assistant] Removing ' + readFileToolIds.size + ' old read_file tool calls to reduce context');
                 this.messages = this.messages.map(function(msg) {
                     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
                         msg.content = msg.content.filter(function(block) {
@@ -2007,8 +2027,6 @@
                     return true;
                 });
             }
-
-            console.log('[AI Assistant] Auto-reading files from conversation:', Array.from(filePaths));
 
             // Read each file and store results (silently, for context)
             var fileContents = [];
@@ -2039,7 +2057,6 @@
                     // Add as a hidden context message (not shown in UI, but in API messages)
                     self.messages.push({ role: 'user', content: contextMsg });
                     self.addMessage('system', 'Loaded ' + fileContents.length + ' file(s) from previous session for context.');
-                    console.log('[AI Assistant] Added file context to messages, total messages:', self.messages.length);
                 }
             });
         },
@@ -2047,11 +2064,7 @@
         rebuildMessagesUI: function() {
             var self = this;
 
-            console.log('[AI Assistant] rebuildMessagesUI called, messages:', this.messages);
-            console.log('[AI Assistant] #ai-assistant-messages element:', $('#ai-assistant-messages').length);
-
             this.messages.forEach(function(msg, index) {
-                console.log('[AI Assistant] Processing message', index, ':', msg.role, typeof msg.content);
                 if (msg.role === 'user') {
                     // User messages can be string or array (tool_result)
                     if (typeof msg.content === 'string' && msg.content.trim()) {
@@ -2097,7 +2110,7 @@
             // Delay scroll to ensure DOM has updated
             var self = this;
             setTimeout(function() {
-                self.scrollToBottom();
+                self.scrollToBottom(true);
             }, 100);
         },
 
@@ -2190,7 +2203,6 @@
                         if (self.conversationId === conversationId) {
                             self.conversationTitle = newTitle;
                         }
-                        console.log('[AI Assistant] Conversation renamed:', newTitle);
                     } else {
                         console.error('[AI Assistant] Rename failed:', response.data);
                     }
@@ -2280,8 +2292,6 @@
 
             if (oldToolIds.size === 0) return;
 
-            console.log('[AI Assistant] Deduplicating ' + oldToolIds.size + ' old read_file calls');
-
             // Remove old tool_use blocks and their results
             this.messages = this.messages.map(function(msg) {
                 if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -2337,10 +2347,7 @@
                     provider: this.conversationProvider,
                     model: this.conversationModel
                 },
-                success: function(response) {
-                    if (response.success) {
-                        console.log('[AI Assistant] Conversation saved before navigation');
-                    }
+                success: function() {
                     window.location.href = targetUrl;
                 },
                 error: function() {
@@ -2363,8 +2370,6 @@
                 : (firstUserMsg.content[0]?.text || '');
 
             if (!userContent) return;
-
-            console.log('[AI Assistant] Generating conversation title...');
 
             // Make a lightweight API call to generate title
             var titlePrompt = 'Generate a very short title (3-6 words max) for a conversation that starts with this message. Return ONLY the title, nothing else:\n\n' + userContent.substring(0, 500);
@@ -2390,7 +2395,6 @@
                         self.conversationTitle = data.content[0].text.trim().replace(/^["']|["']$/g, '');
                         self.saveConversation(true);
                         self.loadSidebarConversations();
-                        console.log('[AI Assistant] Generated title:', self.conversationTitle);
                     }
                 })
                 .catch(function(err) {
@@ -2415,7 +2419,6 @@
                         self.conversationTitle = data.choices[0].message.content.trim().replace(/^["']|["']$/g, '');
                         self.saveConversation(true);
                         self.loadSidebarConversations();
-                        console.log('[AI Assistant] Generated title:', self.conversationTitle);
                     }
                 })
                 .catch(function(err) {

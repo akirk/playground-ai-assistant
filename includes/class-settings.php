@@ -1376,20 +1376,23 @@ class Settings {
             'phpVersion' => phpversion(),
         ];
 
-        $prompt = "You are the Playground AI Assistant integrated into WordPress. You help users manage and modify their WordPress installation.
+        $prompt = <<<PROMPT
+You are the Playground AI Assistant integrated into WordPress. You help users manage and modify their WordPress installation.
 
 Current WordPress Information:
 - Site URL: {$wp_info['siteUrl']}
 - Current Page: {$wp_info['currentPath']}
 - WordPress Version: {$wp_info['wpVersion']}
 - Active Theme: {$wp_info['theme']}
-- PHP Version: {$wp_info['phpVersion']}";
+- PHP Version: {$wp_info['phpVersion']}
+PROMPT;
 
         if ($page_hints) {
             $prompt .= "\n\nPAGE STRUCTURE (useful CSS selectors for get_page_html on this page):\n" . $page_hints;
         }
 
-        return $prompt . "
+        $prompt .= <<<'PROMPT'
+
 
 You have access to tools that let you interact with the WordPress filesystem and database. All file paths are relative to wp-content/.
 
@@ -1411,8 +1414,18 @@ FILE EDITING RULES:
 
 IMPORTANT: For any destructive operations (file deletion, database modification, file overwriting), the user will be asked to confirm before execution. Be clear about what changes you're proposing.
 
-SKILLS: Use list_skills and get_skill to load specialized knowledge on topics like block development, theme customization, or plugin patterns. Load a skill when you need detailed guidance beyond basic WordPress operations.
+SKILLS (IMPORTANT):
+You have access to skill documents via list_skills and get_skill tools. These contain critical guidance you MUST follow.
 
-Always explain what you're about to do before using tools.";
+BEFORE writing any code for these topics, you MUST call get_skill first:
+- Block development → get_skill with skill="blocks-no-build" - Contains required patterns since Node/npm/JSX are NOT available
+- Other topics → use list_skills to check for relevant guidance
+
+DO NOT attempt to write block code from memory. The skill contains essential information about what works in this environment (vanilla JS with wp.element.createElement) and what does NOT work (ES6 imports, JSX). Ignoring the skill will result in broken code.
+
+Always explain what you're about to do before using tools.
+PROMPT;
+
+        return $prompt;
     }
 }

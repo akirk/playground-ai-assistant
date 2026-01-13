@@ -90,6 +90,26 @@
     text-decoration: underline;
 }
 
+#ai-assistant-expand {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+#ai-assistant-expand svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+    vertical-align: middle;
+}
+
+#ai-assistant-expand:hover {
+    text-decoration: none;
+}
+
 .ai-header-sep {
     color: #c3c4c7;
     font-size: 12px;

@@ -183,7 +183,7 @@ class Chat_UI {
                         $wrap.removeClass('hidden').addClass('screen-meta-active').slideDown('fast', function() {
                             setTimeout(function() {
                                 $('#ai-assistant-input').trigger('focus');
-                                window.aiAssistant.scrollToBottom();
+                                window.aiAssistant.scrollToBottom(true);
                             }, 50);
                         });
                         $button.attr('aria-expanded', 'true');
@@ -215,7 +215,7 @@ class Chat_UI {
                         $panel.slideDown('fast', function() {
                             setTimeout(function() {
                                 $('#ai-assistant-input').trigger('focus');
-                                window.aiAssistant.scrollToBottom();
+                                window.aiAssistant.scrollToBottom(true);
                             }, 50);
                         });
                         $button.attr('aria-expanded', 'true');
@@ -267,6 +267,11 @@ class Chat_UI {
                             <a href="' . $history_url . '" class="ai-header-link">' . $history . '</a>
                             <span class="ai-header-sep">|</span>
                             <a href="' . $settings_url . '" class="ai-header-link">' . $settings . '</a>
+                            <span class="ai-header-sep">|</span>
+                            <button type="button" id="ai-assistant-expand" class="ai-header-link" title="' . esc_attr__('Expand', 'ai-assistant') . '">
+                                <svg class="ai-expand-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 13.09l1.41 1.41-4.5 4.5H10v2H4v-6h2v3.59l4.5-4.5zm5-2.18L13.09 9.5l4.5-4.5H14v-2h6v6h-2V5.41l-4.5 4.5z"/></svg>
+                                <svg class="ai-collapse-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="display:none"><path d="M14.5 10.91l-1.41-1.41 4.5-4.5H14v-2h6v6h-2V5.41l-4.5 4.5zm-5 2.18l1.41 1.41-4.5 4.5H10v2H4v-6h2v3.59l4.5-4.5z"/></svg>
+                            </button>
                         </div>
                     </div>
                     <div id="ai-assistant-messages"></div>
