@@ -333,20 +333,12 @@ class Settings {
             'ai_assistant_provider_section'
         );
 
-        // Permissions section
+        // Permissions section (table is rendered in the section callback, not as a field)
         add_settings_section(
             'ai_assistant_permissions_section',
             __('Role Permissions', 'ai-assistant'),
             [$this, 'permissions_section_callback'],
             'ai-assistant-settings'
-        );
-
-        add_settings_field(
-            'ai_assistant_role_permissions',
-            __('Access Levels', 'ai-assistant'),
-            [$this, 'permissions_field_callback'],
-            'ai-assistant-settings',
-            'ai_assistant_permissions_section'
         );
 
         // Display section
@@ -396,10 +388,48 @@ class Settings {
     }
 
     /**
-     * Permissions section description
+     * Permissions section with table
      */
     public function permissions_section_callback() {
-        echo '<p>' . esc_html__('Configure what each WordPress role can do with the AI Assistant.', 'ai-assistant') . '</p>';
+        $permissions = get_option('ai_assistant_role_permissions', []);
+        $roles = wp_roles()->roles;
+        $levels = [
+            'full' => __('Full Access', 'ai-assistant'),
+            'read_only' => __('Read Only', 'ai-assistant'),
+            'chat_only' => __('Chat Only (No Tools)', 'ai-assistant'),
+            'none' => __('No Access', 'ai-assistant')
+        ];
+        ?>
+        <p><?php esc_html_e('Configure what each WordPress role can do with the AI Assistant.', 'ai-assistant'); ?></p>
+        <table class="wp-list-table widefat fixed striped" style="max-width: 500px;">
+            <thead>
+                <tr>
+                    <th scope="col"><?php esc_html_e('Role', 'ai-assistant'); ?></th>
+                    <th scope="col"><?php esc_html_e('Access Level', 'ai-assistant'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($roles as $role_slug => $role) : ?>
+                    <tr>
+                        <td><?php echo esc_html($role['name']); ?></td>
+                        <td>
+                            <select name="ai_assistant_role_permissions[<?php echo esc_attr($role_slug); ?>]">
+                                <?php foreach ($levels as $level_slug => $level_name) : ?>
+                                    <option value="<?php echo esc_attr($level_slug); ?>"
+                                            <?php selected($permissions[$role_slug] ?? 'none', $level_slug); ?>>
+                                        <?php echo esc_html($level_name); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p class="description">
+            <?php esc_html_e('Full Access: All file and database operations. Read Only: Can read files and query database. Chat Only: Can chat but no tool execution.', 'ai-assistant'); ?>
+        </p>
+        <?php
     }
 
     /**
@@ -541,50 +571,6 @@ class Settings {
             var aiAssistantAnthropicKey = '<?php echo esc_js($anthropic_key); ?>';
             var aiAssistantOpenAIKey = '<?php echo esc_js($openai_key); ?>';
         </script>
-        <?php
-    }
-
-    /**
-     * Permissions matrix field
-     */
-    public function permissions_field_callback() {
-        $permissions = get_option('ai_assistant_role_permissions', []);
-        $roles = wp_roles()->roles;
-        $levels = [
-            'full' => __('Full Access', 'ai-assistant'),
-            'read_only' => __('Read Only', 'ai-assistant'),
-            'chat_only' => __('Chat Only (No Tools)', 'ai-assistant'),
-            'none' => __('No Access', 'ai-assistant')
-        ];
-        ?>
-        <table class="widefat" style="max-width: 500px;">
-            <thead>
-                <tr>
-                    <th><?php esc_html_e('Role', 'ai-assistant'); ?></th>
-                    <th><?php esc_html_e('Access Level', 'ai-assistant'); ?></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($roles as $role_slug => $role) : ?>
-                    <tr>
-                        <td><?php echo esc_html($role['name']); ?></td>
-                        <td>
-                            <select name="ai_assistant_role_permissions[<?php echo esc_attr($role_slug); ?>]">
-                                <?php foreach ($levels as $level_slug => $level_name) : ?>
-                                    <option value="<?php echo esc_attr($level_slug); ?>"
-                                            <?php selected($permissions[$role_slug] ?? 'none', $level_slug); ?>>
-                                        <?php echo esc_html($level_name); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-        <p class="description">
-            <?php esc_html_e('Full Access: All file and database operations. Read Only: Can read files and query database. Chat Only: Can chat but no tool execution.', 'ai-assistant'); ?>
-        </p>
         <?php
     }
 
