@@ -42,6 +42,8 @@
     gap: 8px;
     cursor: pointer;
     font-weight: 500;
+    flex: 1;
+    min-width: 0;
 }
 
 .ai-changes-toggle {
@@ -197,6 +199,11 @@
     color: #2271b1 !important;
     border-color: #2271b1 !important;
     background: #f0f7fc !important;
+}
+
+.ai-revert-dir {
+    flex-shrink: 0;
+    margin-left: auto;
 }
 
 /* Inline file preview */
