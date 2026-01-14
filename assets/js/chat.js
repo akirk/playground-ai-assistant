@@ -2427,6 +2427,36 @@
                 .catch(function(err) {
                     console.error('[AI Assistant] Title generation failed:', err);
                 });
+            } else {
+                var endpoint = (config.localEndpoint || 'http://localhost:11434').replace(/\/$/, '');
+                var model = self.conversationModel || config.model;
+
+                fetch(endpoint + '/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        max_tokens: 30,
+                        messages: [{ role: 'user', content: titlePrompt }]
+                    })
+                })
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    if (data.choices && data.choices[0] && data.choices[0].message) {
+                        self.conversationTitle = data.choices[0].message.content.trim().replace(/^["']|["']$/g, '');
+                        self.saveConversation(true);
+                        self.loadSidebarConversations();
+                    }
+                })
+                .catch(function(err) {
+                    console.error('[AI Assistant] Title generation failed:', err);
+                    var words = userContent.split(/\s+/).slice(0, 6).join(' ');
+                    self.conversationTitle = words.length > 50 ? words.substring(0, 50) + '...' : words;
+                    self.saveConversation(true);
+                    self.loadSidebarConversations();
+                });
             }
         }
     };
