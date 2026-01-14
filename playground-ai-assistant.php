@@ -144,6 +144,11 @@ final class AI_Assistant {
      * Plugin activation
      */
     public function activate() {
+        // Ensure encryption key exists (needed for API key storage)
+        if (!get_option('ai_assistant_encryption_key')) {
+            update_option('ai_assistant_encryption_key', wp_generate_password(32, true, true));
+        }
+
         // Set default options
         if (!get_option('ai_assistant_provider')) {
             update_option('ai_assistant_provider', 'anthropic');

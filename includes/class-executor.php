@@ -390,16 +390,18 @@ class Executor {
     private function search_files(string $pattern): array {
         $full_pattern = $this->wp_content_path . '/' . ltrim($pattern, '/');
 
-        $files = glob($full_pattern, GLOB_BRACE);
+        $files = glob($full_pattern);
         $results = [];
 
-        foreach ($files as $file) {
-            $relative = str_replace($this->wp_content_path . '/', '', $file);
-            $results[] = [
-                'path' => $relative,
-                'type' => is_dir($file) ? 'directory' : 'file',
-                'size' => is_file($file) ? filesize($file) : null,
-            ];
+        if ($files !== false) {
+            foreach ($files as $file) {
+                $relative = str_replace($this->wp_content_path . '/', '', $file);
+                $results[] = [
+                    'path' => $relative,
+                    'type' => is_dir($file) ? 'directory' : 'file',
+                    'size' => is_file($file) ? filesize($file) : null,
+                ];
+            }
         }
 
         return [
@@ -427,51 +429,55 @@ class Executor {
     }
 
     private function search_content_recursive(string $dir, string $needle, string $pattern, array &$results, int $limit = 50): void {
-        if (count($results) >= $limit) {
+        if (count($results) >= $limit || !is_dir($dir)) {
             return;
         }
 
         $files = glob($dir . '/' . $pattern);
-        foreach ($files as $file) {
-            if (count($results) >= $limit) {
-                return;
-            }
+        if ($files !== false) {
+            foreach ($files as $file) {
+                if (count($results) >= $limit) {
+                    return;
+                }
 
-            if (is_file($file)) {
-                $content = file_get_contents($file);
-                if ($content !== false && stripos($content, $needle) !== false) {
-                    // Find line numbers
-                    $lines = explode("\n", $content);
-                    $matching_lines = [];
-                    foreach ($lines as $line_num => $line) {
-                        if (stripos($line, $needle) !== false) {
-                            $matching_lines[] = [
-                                'line' => $line_num + 1,
-                                'content' => trim(substr($line, 0, 200)),
-                            ];
+                if (is_file($file)) {
+                    $content = file_get_contents($file);
+                    if ($content !== false && stripos($content, $needle) !== false) {
+                        // Find line numbers
+                        $lines = explode("\n", $content);
+                        $matching_lines = [];
+                        foreach ($lines as $line_num => $line) {
+                            if (stripos($line, $needle) !== false) {
+                                $matching_lines[] = [
+                                    'line' => $line_num + 1,
+                                    'content' => trim(substr($line, 0, 200)),
+                                ];
+                            }
                         }
-                    }
 
-                    $results[] = [
-                        'path' => str_replace($this->wp_content_path . '/', '', $file),
-                        'matches' => array_slice($matching_lines, 0, 5),
-                    ];
+                        $results[] = [
+                            'path' => str_replace($this->wp_content_path . '/', '', $file),
+                            'matches' => array_slice($matching_lines, 0, 5),
+                        ];
+                    }
                 }
             }
         }
 
         // Search subdirectories
         $subdirs = glob($dir . '/*', GLOB_ONLYDIR);
-        foreach ($subdirs as $subdir) {
-            if (count($results) >= $limit) {
-                return;
+        if ($subdirs !== false) {
+            foreach ($subdirs as $subdir) {
+                if (count($results) >= $limit) {
+                    return;
+                }
+                // Skip vendor and node_modules
+                $basename = basename($subdir);
+                if ($basename === 'vendor' || $basename === 'node_modules') {
+                    continue;
+                }
+                $this->search_content_recursive($subdir, $needle, $pattern, $results, $limit);
             }
-            // Skip vendor and node_modules
-            $basename = basename($subdir);
-            if ($basename === 'vendor' || $basename === 'node_modules') {
-                continue;
-            }
-            $this->search_content_recursive($subdir, $needle, $pattern, $results, $limit);
         }
     }
 

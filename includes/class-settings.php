@@ -19,6 +19,10 @@ class Settings {
         add_action('wp_ajax_ai_assistant_get_skill', [$this, 'ajax_get_skill']);
         add_action('load-tools_page_ai-conversations', [$this, 'add_help_tabs']);
         add_action('load-settings_page_ai-assistant-settings', [$this, 'add_help_tabs']);
+
+        // Encrypt API keys before storing
+        add_filter('pre_update_option_ai_assistant_anthropic_api_key', [$this, 'encrypt_api_key'], 10, 2);
+        add_filter('pre_update_option_ai_assistant_openai_api_key', [$this, 'encrypt_api_key'], 10, 2);
     }
 
     public function ajax_get_skill() {
@@ -76,6 +80,15 @@ class Settings {
         return $key;
     }
 
+    private const ENCRYPTION_PREFIX = '$enc$';
+
+    /**
+     * Check if a value is already encrypted
+     */
+    public function is_encrypted($data) {
+        return is_string($data) && strpos($data, self::ENCRYPTION_PREFIX) === 0;
+    }
+
     /**
      * Encrypt sensitive data
      */
@@ -83,18 +96,25 @@ class Settings {
         if (empty($data)) {
             return '';
         }
+        if (empty($this->encryption_key)) {
+            $this->encryption_key = $this->get_encryption_key();
+        }
         $iv = openssl_random_pseudo_bytes(16);
         $encrypted = openssl_encrypt($data, 'AES-256-CBC', $this->encryption_key, 0, $iv);
-        return base64_encode($iv . $encrypted);
+        if ($encrypted === false) {
+            return '';
+        }
+        return self::ENCRYPTION_PREFIX . base64_encode($iv . $encrypted);
     }
 
     /**
      * Decrypt sensitive data
      */
     public function decrypt($data) {
-        if (empty($data)) {
+        if (empty($data) || !$this->is_encrypted($data)) {
             return '';
         }
+        $data = substr($data, strlen(self::ENCRYPTION_PREFIX));
         $decoded = base64_decode($data);
         if ($decoded === false || strlen($decoded) < 17) {
             return '';
@@ -273,10 +293,10 @@ class Settings {
         register_setting('ai_assistant_settings', 'ai_assistant_provider');
         register_setting('ai_assistant_settings', 'ai_assistant_model');
         register_setting('ai_assistant_settings', 'ai_assistant_anthropic_api_key', [
-            'sanitize_callback' => [$this, 'sanitize_api_key']
+            'sanitize_callback' => [$this, 'sanitize_api_key_input']
         ]);
         register_setting('ai_assistant_settings', 'ai_assistant_openai_api_key', [
-            'sanitize_callback' => [$this, 'sanitize_api_key']
+            'sanitize_callback' => [$this, 'sanitize_api_key_input']
         ]);
         register_setting('ai_assistant_settings', 'ai_assistant_local_endpoint');
         register_setting('ai_assistant_settings', 'ai_assistant_local_model');
@@ -359,14 +379,25 @@ class Settings {
     }
 
     /**
-     * Sanitize API key (encrypt before storing)
+     * Sanitize API key input - just validates, doesn't encrypt
+     * Returns null to skip the update if masked value submitted
      */
-    public function sanitize_api_key($value) {
+    public function sanitize_api_key_input($value) {
         if (empty($value) || strpos($value, '***') === 0) {
-            // Keep existing value if masked or empty
-            return get_option(current_filter() === 'sanitize_option_ai_assistant_anthropic_api_key'
-                ? 'ai_assistant_anthropic_api_key'
-                : 'ai_assistant_openai_api_key');
+            return null;
+        }
+        return trim($value);
+    }
+
+    /**
+     * Encrypt API key before storing (called via pre_update_option filter)
+     */
+    public function encrypt_api_key($value, $old_value) {
+        if ($value === null || $value === '') {
+            return $old_value;
+        }
+        if ($this->is_encrypted($value)) {
+            return $value;
         }
         return $this->encrypt($value);
     }
@@ -376,8 +407,7 @@ class Settings {
      */
     public function get_api_key($provider) {
         $option = $provider === 'anthropic' ? 'ai_assistant_anthropic_api_key' : 'ai_assistant_openai_api_key';
-        $encrypted = get_option($option);
-        return $this->decrypt($encrypted);
+        return $this->decrypt(get_option($option));
     }
 
     /**
@@ -609,7 +639,15 @@ class Settings {
         jQuery(function($) {
             // Add data-provider attribute to the form and provider-specific rows
             var $form = $('#ai_assistant_provider').closest('form');
+            var $submitBtn = $form.find('#submit');
             $form.addClass('ai-settings-form').attr('data-provider', $('#ai_assistant_provider').val());
+
+            // Enable/disable submit based on model selection
+            function updateSubmitState() {
+                var modelVal = $('#ai_assistant_model').val();
+                var hasValidModel = modelVal && modelVal !== '';
+                $submitBtn.prop('disabled', !hasValidModel);
+            }
 
             // Mark provider-specific rows
             $('.ai-provider-field[data-provider]').each(function() {
@@ -715,9 +753,11 @@ class Settings {
                         var apiKey = hasSavedKey ? aiAssistantAnthropicKey : formKey;
                         if (!apiKey) {
                             $select.html('<option value="">Enter API key to load models</option>');
+                            updateSubmitState();
                             return;
                         }
                         $select.html('<option value="">Loading models...</option>');
+                        updateSubmitState();
                         fetchAnthropicModels().then(function(models) {
                             $select.empty();
                             if (models && models.length > 0) {
@@ -737,6 +777,7 @@ class Settings {
                             } else {
                                 $select.html('<option value="">Failed to load models - check API key</option>');
                             }
+                            updateSubmitState();
                         });
                         return;
                     case 'openai':
@@ -745,9 +786,11 @@ class Settings {
                         var openaiKey = openaiHasSavedKey ? aiAssistantOpenAIKey : openaiFormKey;
                         if (!openaiKey) {
                             $select.html('<option value="">Enter API key to load models</option>');
+                            updateSubmitState();
                             return;
                         }
                         $select.html('<option value="">Loading models...</option>');
+                        updateSubmitState();
                         fetchOpenAIModels().then(function(models) {
                             $select.empty();
                             if (models && models.length > 0) {
@@ -767,10 +810,12 @@ class Settings {
                             } else {
                                 $select.html('<option value="">Failed to load models - check API key</option>');
                             }
+                            updateSubmitState();
                         });
                         return;
                     case 'local':
                         $select.html('<option value="">Loading from local server...</option>');
+                        updateSubmitState();
                         fetchLocalModels();
                         return;
                 }
@@ -843,6 +888,7 @@ class Settings {
                 } else {
                     $select.html('<option value="">No models found - check if server is running</option>');
                 }
+                updateSubmitState();
             }
 
             // Test connection button - client-side testing
@@ -1020,7 +1066,8 @@ class Settings {
                 }
             });
 
-            // Initial load
+            // Initial load - disable submit until models are loaded
+            $submitBtn.prop('disabled', true);
             loadModels(aiAssistantCurrentProvider);
 
             // Make sections collapsible (collapsed by default)

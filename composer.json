@@ -1,0 +1,11 @@
+{
+    "name": "playground/ai-assistant",
+    "description": "AI Assistant for WordPress Playground",
+    "type": "wordpress-plugin",
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    },
+    "scripts": {
+        "test": "phpunit"
+    }
+}
