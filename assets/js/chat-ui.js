@@ -19,6 +19,9 @@
                 $message.attr('data-raw-content', content);
                 $message.append(this.getMessageActions());
                 this.updateSummarizeVisibility();
+            } else if (role === 'user') {
+                $message.attr('data-raw-content', content);
+                $message.append(this.getUserMessageActions());
             }
 
             $messages.append($message);
@@ -35,6 +38,14 @@
                 '</button>' +
                 '<button type="button" class="ai-action-btn ai-action-summarize" title="Summarize conversation">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>' +
+                '</button>' +
+                '</div>';
+        },
+
+        getUserMessageActions: function() {
+            return '<div class="ai-message-actions">' +
+                '<button type="button" class="ai-action-btn ai-action-copy" title="Copy">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>' +
                 '</button>' +
                 '</div>';
         },

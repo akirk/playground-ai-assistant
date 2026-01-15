@@ -24,8 +24,12 @@
         draftHistoryMax: 50,
         pendingNewChat: false,
         pendingChatOriginalModelInfo: null,
+        consecutiveAjaxErrors: 0,
+        ajaxErrorThreshold: 2,
+        recoveryMessageShown: false,
 
         init: function() {
+            this.setupAjaxErrorTracking();
             this.bindEvents();
             this.buildSystemPrompt();
             this.restoreDraft();
@@ -404,6 +408,46 @@
             var div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        },
+
+        setupAjaxErrorTracking: function() {
+            var self = this;
+
+            $(document).ajaxSuccess(function(event, xhr, settings) {
+                if (settings.url && settings.url.indexOf('admin-ajax.php') !== -1) {
+                    self.consecutiveAjaxErrors = 0;
+                    self.recoveryMessageShown = false;
+                }
+            });
+
+            $(document).ajaxError(function(event, xhr, settings) {
+                if (settings.url && settings.url.indexOf('admin-ajax.php') !== -1) {
+                    self.consecutiveAjaxErrors++;
+
+                    if (self.consecutiveAjaxErrors >= self.ajaxErrorThreshold && !self.recoveryMessageShown) {
+                        self.showRecoveryMessage();
+                    }
+                }
+            });
+        },
+
+        showRecoveryMessage: function() {
+            this.recoveryMessageShown = true;
+            this.setLoading(false);
+
+            var message = '**WordPress may be broken** due to a recent file change.\n\n' +
+                'Multiple requests have failed, which often indicates a PHP syntax error.\n\n' +
+                'To recover, click the [[GRID_ICON]] grid icon in the top bar and use **Recovery Mode** to restore the last working state.';
+
+            this.addMessage('error', message);
+
+            var gridIcon = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="18" height="18" style="vertical-align: text-bottom; display: inline-block;">' +
+                '<path d="M6 5.5h3a.5.5 0 01.5.5v3a.5.5 0 01-.5.5H6a.5.5 0 01-.5-.5V6a.5.5 0 01.5-.5zM4 6a2 2 0 012-2h3a2 2 0 012 2v3a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm11-.5h3a.5.5 0 01.5.5v3a.5.5 0 01-.5.5h-3a.5.5 0 01-.5-.5V6a.5.5 0 01.5-.5zM13 6a2 2 0 012-2h3a2 2 0 012 2v3a2 2 0 01-2 2h-3a2 2 0 01-2-2V6zm5 8.5h-3a.5.5 0 00-.5.5v3a.5.5 0 00.5.5h3a.5.5 0 00.5-.5v-3a.5.5 0 00-.5-.5zM15 13a2 2 0 00-2 2v3a2 2 0 002 2h3a2 2 0 002-2v-3a2 2 0 00-2-2h-3zm-9 1.5h3a.5.5 0 01.5.5v3a.5.5 0 01-.5.5H6a.5.5 0 01-.5-.5v-3a.5.5 0 01.5-.5zM4 15a2 2 0 012-2h3a2 2 0 012 2v3a2 2 0 01-2 2H6a2 2 0 01-2-2v-3z" fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"></path>' +
+                '</svg>';
+
+            var $lastError = $('#ai-assistant-messages .ai-message-error').last();
+            var html = $lastError.find('.ai-message-content').html();
+            $lastError.find('.ai-message-content').html(html.replace('[[GRID_ICON]]', gridIcon));
         }
     };
 

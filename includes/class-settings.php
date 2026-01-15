@@ -1496,18 +1496,37 @@ FILE EDITING RULES:
 
 IMPORTANT: For any destructive operations (file deletion, database modification, file overwriting), the user will be asked to confirm before execution. Be clear about what changes you're proposing.
 
-SKILLS (IMPORTANT):
-You have access to skill documents via list_skills and get_skill tools. These contain critical guidance you MUST follow.
-
-BEFORE writing any code for these topics, you MUST call get_skill first:
-- Block development → get_skill with skill="blocks-no-build" - Contains required patterns since Node/npm/JSX are NOT available
-- Other topics → use list_skills to check for relevant guidance
-
-DO NOT attempt to write block code from memory. The skill contains essential information about what works in this environment (vanilla JS with wp.element.createElement) and what does NOT work (ES6 imports, JSX). Ignoring the skill will result in broken code.
-
 Always explain what you're about to do before using tools.
 PROMPT;
 
+        $prompt .= $this->load_skills();
+
         return $prompt;
+    }
+
+    /**
+     * Load all skill files from the skills directory
+     */
+    private function load_skills() {
+        $skills_dir = dirname(__DIR__) . '/skills';
+        if (!is_dir($skills_dir)) {
+            return '';
+        }
+
+        $skill_files = glob($skills_dir . '/*.md');
+        if (empty($skill_files)) {
+            return '';
+        }
+
+        $skills_content = "\n\n=== SKILLS ===\nThe following skill documents contain important guidance. Follow them carefully.\n";
+
+        foreach ($skill_files as $file) {
+            $content = file_get_contents($file);
+            $content = preg_replace('/^---\s*\n.*?\n---\s*\n/s', '', $content);
+            $skill_name = basename($file, '.md');
+            $skills_content .= "\n--- SKILL: {$skill_name} ---\n{$content}\n";
+        }
+
+        return $skills_content;
     }
 }

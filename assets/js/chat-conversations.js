@@ -742,6 +742,7 @@
             var $btn = $('#ai-assistant-summarize');
             $btn.prop('disabled', true).addClass('loading');
             this.addMessage('system', 'Generating conversation summary...');
+            var $generatingMsg = $('#ai-assistant-messages .ai-message-system').last();
 
             $.ajax({
                 url: aiAssistantConfig.ajaxUrl,
@@ -761,12 +762,21 @@
                     var convData = response.data;
 
                     if (convData.existing_summary) {
-                        self.addMessage('system', 'Existing summary:\n\n' + convData.existing_summary);
+                        $generatingMsg.remove();
+                        var $existing = $('#ai-assistant-messages .ai-conversation-summary');
+                        if ($existing.length) {
+                            $existing.removeClass('collapsed');
+                            $existing[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        } else {
+                            self.showConversationSummary(convData.existing_summary);
+                            self.scrollToBottom();
+                        }
                         $btn.prop('disabled', false).removeClass('loading');
                         return;
                     }
 
                     self.generateConversationSummary(convData).then(function(summary) {
+                        $generatingMsg.remove();
                         $.ajax({
                             url: aiAssistantConfig.ajaxUrl,
                             type: 'POST',
@@ -787,11 +797,13 @@
                             }
                         });
                     }).catch(function(error) {
+                        $generatingMsg.remove();
                         self.addMessage('error', 'Failed to generate summary: ' + error.message);
                         $btn.prop('disabled', false).removeClass('loading');
                     });
                 },
                 error: function() {
+                    $generatingMsg.remove();
                     self.addMessage('error', 'Failed to load conversation data');
                     $btn.prop('disabled', false).removeClass('loading');
                 }

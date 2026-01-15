@@ -243,6 +243,10 @@
     align-self: flex-end;
 }
 
+.ai-message-user .ai-message-actions {
+    justify-content: flex-end;
+}
+
 .ai-message-assistant,
 .ai-message-error,
 .ai-message-system {

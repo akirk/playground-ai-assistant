@@ -158,15 +158,20 @@
                 for await (var event of this.readSSEStream(response)) {
                     switch (event.type) {
                         case 'content_block_start':
-                            currentBlock = { index: event.index, ...event.content_block };
+                            currentBlock = { ...event.content_block };
                             if (currentBlock.type === 'tool_use') {
                                 currentBlock.input = '';
+                            } else if (currentBlock.type === 'text') {
+                                currentBlock.text = '';
                             }
                             break;
 
                         case 'content_block_delta':
                             if (event.delta.type === 'text_delta') {
                                 textContent += event.delta.text;
+                                if (currentBlock && currentBlock.type === 'text') {
+                                    currentBlock.text += event.delta.text;
+                                }
                                 this.updateReply($reply, textContent);
                             } else if (event.delta.type === 'input_json_delta') {
                                 if (currentBlock) {
@@ -207,7 +212,10 @@
                     this.finalizeReply($reply);
                 }
 
-                this.messages.push({ role: 'assistant', content: contentBlocks });
+                var filteredBlocks = contentBlocks.filter(function(block) {
+                    return block.type !== 'text' || (block.text && block.text.length > 0);
+                });
+                this.messages.push({ role: 'assistant', content: filteredBlocks });
                 this.updateTokenCount();
 
                 if (toolCalls.length > 0) {
