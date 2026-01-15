@@ -104,6 +104,9 @@
         formatContent: function(content) {
             if (!content) return '';
 
+            // Trim trailing whitespace/newlines before processing
+            content = content.replace(/\s+$/, '');
+
             content = $('<div>').text(content).html();
 
             // Code blocks
