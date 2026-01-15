@@ -1,10 +1,11 @@
 <?php
 /**
  * Plugin Name: Playground AI Assistant
- * Plugin URI: https://github.com/example/playground-ai-assistant
+ * Plugin URI: https://github.com/akirk/playground-ai-assistant
  * Description: AI-powered chat interface for WordPress Playground to modify it to your liking. Bring your own key or use a local LLM
  * Version: 1.0.0
  * Author: Alex Kirk
+ * Author URI: https://alex.kirk.at
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: ai-assistant

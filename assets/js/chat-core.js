@@ -450,6 +450,8 @@
             var $lastError = $('#ai-assistant-messages .ai-message-error').last();
             var html = $lastError.find('.ai-message-content').html();
             $lastError.find('.ai-message-content').html(html.replace('[[GRID_ICON]]', gridIcon));
+
+            $lastError[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     };
 

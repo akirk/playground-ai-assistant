@@ -2,9 +2,11 @@
 
 An AI-powered chat interface for WordPress Playground. Bring your own API key or connect to a local LLM.
 
+![Screenshot](screenshot.png)
+
 ## Features
 
-- **Multiple LLM Providers**: Anthropic (Claude), OpenAI, and local models via Ollama
+- **Multiple LLM Providers**: Anthropic (Claude), OpenAI, and local models via Ollama/LM Studio
 - **Browser-Side API Calls**: Connect to local LLMs even when WordPress is hosted remotely
 - **Tool System**: Execute PHP, read/write files, search WordPress docs
 - **Change Tracking**: All AI modifications are tracked with full diff history
@@ -29,10 +31,10 @@ An AI-powered chat interface for WordPress Playground. Bring your own API key or
 
 Go to **Settings > AI Assistant** to configure:
 
-- **Provider**: Choose between Anthropic, OpenAI, or Local (Ollama)
+- **Provider**: Choose between Anthropic, OpenAI, or Local (Ollama/LM Studio)
 - **Model**: Select which model to use
 - **API Keys**: Enter your provider API keys
-- **Local Endpoint**: Configure Ollama endpoint (default: `http://localhost:11434`)
+- **Local Endpoint**: Configure Ollama/LM Studio endpoint (default: `http://localhost:11434`)
 
 ## Usage
 
