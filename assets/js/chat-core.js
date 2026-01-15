@@ -437,7 +437,9 @@
 
             var message = '**WordPress may be broken** due to a recent file change.\n\n' +
                 'Multiple requests have failed, which often indicates a PHP syntax error.\n\n' +
-                'To recover, click the [[GRID_ICON]] grid icon in the top bar and use **Recovery Mode** to restore the last working state.';
+                'This page still works because it was already loaded, but navigating to any other WordPress page will likely fail. ' +
+                'You can try navigating to confirm, but first remember how to recover:\n\n' +
+                'Click the [[GRID_ICON]] grid icon in the top bar and use **Recovery Mode** to restore the last working state.';
 
             this.addMessage('error', message);
 

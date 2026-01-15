@@ -23,6 +23,7 @@ class Changes_Admin {
         add_action('wp_ajax_ai_assistant_revert_file', [$this, 'ajax_revert_file']);
         add_action('wp_ajax_ai_assistant_reapply_file', [$this, 'ajax_reapply_file']);
         add_action('wp_ajax_ai_assistant_revert_files', [$this, 'ajax_revert_files']);
+        add_action('wp_ajax_ai_assistant_lint_php', [$this, 'ajax_lint_php']);
         add_action('admin_action_ai_assistant_download_diff', [$this, 'handle_diff_download']);
     }
 
@@ -79,6 +80,8 @@ class Changes_Admin {
                 'reapplyTitle' => __('Reapply this change', 'ai-assistant'),
                 'confirmRevertDir' => __('Are you sure you want to revert %d file(s) in this directory?', 'ai-assistant'),
                 'nothingToRevert' => __('No files to revert in this directory.', 'ai-assistant'),
+                'syntaxError' => __('Syntax Error', 'ai-assistant'),
+                'syntaxOk' => __('Syntax OK', 'ai-assistant'),
             ],
         ]);
     }
@@ -186,6 +189,7 @@ class Changes_Admin {
                                     <?php if ($file['is_binary']): ?>
                                     <span class="ai-changes-binary"><?php esc_html_e('Binary', 'ai-assistant'); ?></span>
                                     <?php endif; ?>
+                                    <span class="ai-lint-status" data-id="<?php echo esc_attr($file['id']); ?>"></span>
                                     <span class="ai-changes-date">
                                         <?php echo esc_html(human_time_diff(strtotime($file['date']), current_time('timestamp')) . ' ago'); ?>
                                     </span>
@@ -504,6 +508,87 @@ class Changes_Admin {
             'errors' => $errors,
             'message' => sprintf(__('%d file(s) reverted.', 'ai-assistant'), count($reverted)),
         ]);
+    }
+
+    public function ajax_lint_php(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $file_id = isset($_POST['file_id']) ? intval($_POST['file_id']) : 0;
+
+        if (!$file_id) {
+            wp_send_json_error(['message' => 'No file specified']);
+        }
+
+        $change = $this->change_tracker->get_change($file_id);
+
+        if (!$change) {
+            wp_send_json_error(['message' => 'Change not found']);
+        }
+
+        $path = $change['path'];
+
+        if (!preg_match('/\.php$/i', $path)) {
+            wp_send_json_success(['valid' => true, 'is_php' => false]);
+        }
+
+        $full_path = WP_CONTENT_DIR . '/' . $path;
+
+        if (!file_exists($full_path)) {
+            wp_send_json_success(['valid' => true, 'is_php' => true, 'message' => 'File does not exist']);
+        }
+
+        $content = file_get_contents($full_path);
+        $result = $this->lint_php_content($content);
+
+        wp_send_json_success([
+            'valid' => $result['valid'],
+            'is_php' => true,
+            'error' => $result['error'] ?? null,
+            'line' => $result['line'] ?? null,
+        ]);
+    }
+
+    public function lint_php_content(string $content): array {
+        $previous_error_reporting = error_reporting(0);
+
+        set_error_handler(function($severity, $message, $file, $line) {
+            throw new \ErrorException($message, 0, $severity, $file, $line);
+        });
+
+        try {
+            token_get_all($content, TOKEN_PARSE);
+            restore_error_handler();
+            error_reporting($previous_error_reporting);
+            return ['valid' => true];
+        } catch (\ParseError $e) {
+            restore_error_handler();
+            error_reporting($previous_error_reporting);
+            return [
+                'valid' => false,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ];
+        } catch (\ErrorException $e) {
+            restore_error_handler();
+            error_reporting($previous_error_reporting);
+            return [
+                'valid' => false,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ];
+        } catch (\Throwable $e) {
+            restore_error_handler();
+            error_reporting($previous_error_reporting);
+            return [
+                'valid' => false,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ];
+        }
     }
 
     private function parse_patch(string $patch): array {

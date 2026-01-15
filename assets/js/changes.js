@@ -7,6 +7,7 @@
 
         init: function() {
             this.bindEvents();
+            this.lintAllPhpFiles();
         },
 
         bindEvents: function() {
@@ -18,9 +19,10 @@
                 var $dir = $(this).closest('.ai-changes-directory');
                 var $files = $dir.find('.ai-changes-files');
                 var $toggle = $dir.find('.ai-changes-toggle');
+                var willBeVisible = !$files.is(':visible');
 
+                $toggle.text(willBeVisible ? '▼' : '▶');
                 $files.slideToggle(200);
-                $toggle.text($files.is(':visible') ? '▼' : '▶');
             });
 
             // Per-file preview toggle
@@ -406,6 +408,9 @@
             // Clear the inline preview cache so it reloads fresh diff next time
             var $preview = $('.ai-file-inline-preview[data-id="' + fileId + '"]');
             $preview.find('code').html('');
+
+            // Re-lint the file since contents changed
+            this.lintFile(fileId);
         },
 
         revertDirectory: function(dir, $button) {
@@ -458,6 +463,70 @@
                 alert(aiChanges.strings.revertError);
                 $button.text(originalText).prop('disabled', false);
             });
+        },
+
+        lintAllPhpFiles: function() {
+            var self = this;
+            $('.ai-lint-status').each(function() {
+                var fileId = $(this).data('id');
+                self.lintFile(fileId);
+            });
+        },
+
+        lintFile: function(fileId) {
+            var self = this;
+            var $status = $('.ai-lint-status[data-id="' + fileId + '"]');
+            var $directory = $status.closest('.ai-changes-directory');
+
+            $.post(aiChanges.ajaxUrl, {
+                action: 'ai_assistant_lint_php',
+                nonce: aiChanges.nonce,
+                file_id: fileId
+            }, function(response) {
+                if (!response.success || !response.data.is_php) {
+                    return;
+                }
+
+                if (response.data.valid) {
+                    $status
+                        .text(aiChanges.strings.syntaxOk || 'Syntax OK')
+                        .removeClass('ai-lint-error')
+                        .addClass('ai-lint-ok');
+                } else {
+                    var errorMsg = response.data.error || 'Syntax error';
+                    if (response.data.line) {
+                        errorMsg += ' (line ' + response.data.line + ')';
+                    }
+                    $status
+                        .text(aiChanges.strings.syntaxError || 'Syntax Error')
+                        .removeClass('ai-lint-ok')
+                        .addClass('ai-lint-error')
+                        .attr('title', errorMsg);
+                }
+
+                self.updateDirectoryLintStatus($directory);
+            });
+        },
+
+        updateDirectoryLintStatus: function($directory) {
+            var $header = $directory.find('.ai-changes-directory-header');
+            var $dirStatus = $header.find('.ai-dir-lint-status');
+
+            if ($dirStatus.length === 0) {
+                $dirStatus = $('<span class="ai-dir-lint-status"></span>');
+                $header.find('.ai-changes-count').after($dirStatus);
+            }
+
+            var errorCount = $directory.find('.ai-lint-error').length;
+
+            if (errorCount > 0) {
+                $dirStatus
+                    .text(errorCount + ' syntax ' + (errorCount === 1 ? 'error' : 'errors'))
+                    .addClass('ai-lint-error')
+                    .show();
+            } else {
+                $dirStatus.removeClass('ai-lint-error').hide();
+            }
         }
     };
 

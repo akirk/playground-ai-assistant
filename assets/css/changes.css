@@ -173,6 +173,37 @@
     flex-shrink: 0;
 }
 
+.ai-lint-status {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    cursor: default;
+}
+
+.ai-lint-status:empty {
+    display: none;
+}
+
+.ai-lint-ok {
+    background: #d4edda;
+    color: #155724;
+}
+
+.ai-lint-error {
+    background: #f8d7da;
+    color: #721c24;
+    font-weight: 600;
+}
+
+.ai-dir-lint-status {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-left: 8px;
+    display: none;
+}
+
 .ai-changes-date {
     color: #646970;
     font-size: 12px;
