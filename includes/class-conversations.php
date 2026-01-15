@@ -16,6 +16,8 @@ class Conversations {
         add_action('wp_ajax_ai_assistant_list_conversations', [$this, 'ajax_list_conversations']);
         add_action('wp_ajax_ai_assistant_delete_conversation', [$this, 'ajax_delete_conversation']);
         add_action('wp_ajax_ai_assistant_rename_conversation', [$this, 'ajax_rename_conversation']);
+        add_action('wp_ajax_ai_assistant_save_summary', [$this, 'ajax_save_summary']);
+        add_action('wp_ajax_ai_assistant_get_conversation_for_summary', [$this, 'ajax_get_conversation_for_summary']);
         add_action('add_meta_boxes', [$this, 'add_meta_boxes']);
         add_filter('manage_' . self::POST_TYPE . '_posts_columns', [$this, 'add_columns']);
         add_action('manage_' . self::POST_TYPE . '_posts_custom_column', [$this, 'render_columns'], 10, 2);
@@ -339,6 +341,100 @@ class Conversations {
         wp_send_json_success([
             'conversation_id' => $conversation_id,
             'title' => $title,
+        ]);
+    }
+
+    public function ajax_get_conversation_for_summary() {
+        check_ajax_referer('ai_assistant_chat', '_wpnonce');
+
+        $conversation_id = intval($_POST['conversation_id'] ?? 0);
+
+        if ($conversation_id <= 0) {
+            wp_send_json_error(['message' => 'Invalid conversation ID']);
+        }
+
+        $post = get_post($conversation_id);
+        if (!$post || $post->post_type !== self::POST_TYPE) {
+            wp_send_json_error(['message' => 'Conversation not found']);
+        }
+
+        if ($post->post_author != get_current_user_id() && !current_user_can('edit_others_posts')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $messages = $this->get_messages($post);
+        $message_count = count($messages);
+
+        // Format messages for summarization prompt
+        $formatted = [];
+        foreach ($messages as $msg) {
+            $role = $msg['role'];
+            $content = is_array($msg['content']) ? $this->extract_text_content($msg['content']) : $msg['content'];
+            if ($content) {
+                $formatted[] = ucfirst($role) . ': ' . $content;
+            }
+        }
+
+        wp_send_json_success([
+            'conversation_id' => $conversation_id,
+            'title' => $post->post_title,
+            'message_count' => $message_count,
+            'existing_summary' => $post->post_excerpt,
+            'messages_text' => implode("\n\n", $formatted),
+            'provider' => get_post_meta($conversation_id, '_ai_provider', true) ?: '',
+            'model' => get_post_meta($conversation_id, '_ai_model', true) ?: '',
+        ]);
+    }
+
+    private function extract_text_content($content_array) {
+        $text = '';
+        foreach ($content_array as $block) {
+            if (is_array($block) && isset($block['type'])) {
+                if ($block['type'] === 'text' && isset($block['text'])) {
+                    $text .= $block['text'] . ' ';
+                } elseif ($block['type'] === 'tool_use' && isset($block['name'])) {
+                    $text .= '[Used tool: ' . $block['name'] . '] ';
+                }
+            }
+        }
+        return trim($text);
+    }
+
+    public function ajax_save_summary() {
+        check_ajax_referer('ai_assistant_chat', '_wpnonce');
+
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $conversation_id = intval($_POST['conversation_id'] ?? 0);
+        $summary = sanitize_textarea_field($_POST['summary'] ?? '');
+
+        if ($conversation_id <= 0) {
+            wp_send_json_error(['message' => 'Invalid conversation ID']);
+        }
+
+        if (empty($summary)) {
+            wp_send_json_error(['message' => 'Summary cannot be empty']);
+        }
+
+        $post = get_post($conversation_id);
+        if (!$post || $post->post_type !== self::POST_TYPE) {
+            wp_send_json_error(['message' => 'Conversation not found']);
+        }
+
+        if ($post->post_author != get_current_user_id() && !current_user_can('edit_others_posts')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        wp_update_post([
+            'ID' => $conversation_id,
+            'post_excerpt' => $summary,
+        ]);
+
+        wp_send_json_success([
+            'conversation_id' => $conversation_id,
+            'summary' => $summary,
         ]);
     }
 }

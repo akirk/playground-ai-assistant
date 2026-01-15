@@ -70,6 +70,7 @@ class Chat_UI {
             'provider' => $provider,
             'apiKey' => $api_key,
             'model' => get_option('ai_assistant_model', ''),
+            'summarizationModel' => get_option('ai_assistant_summarization_model', ''),
             'localEndpoint' => get_option('ai_assistant_local_endpoint', 'http://localhost:11434'),
             'settingsUrl' => admin_url('options-general.php?page=ai-assistant-settings'),
             'homeUrl' => home_url(),

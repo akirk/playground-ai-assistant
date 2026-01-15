@@ -17,6 +17,7 @@ class Settings {
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_ajax_ai_assistant_get_skill', [$this, 'ajax_get_skill']);
+        add_action('wp_ajax_ai_assistant_get_current_settings', [$this, 'ajax_get_current_settings']);
         add_action('load-tools_page_ai-conversations', [$this, 'add_help_tabs']);
         add_action('load-settings_page_ai-assistant-settings', [$this, 'add_help_tabs']);
 
@@ -65,6 +66,19 @@ class Settings {
             'id' => $skill_id,
             'title' => $frontmatter['title'] ?? $skill_id,
             'content' => $body,
+        ]);
+    }
+
+    public function ajax_get_current_settings() {
+        check_ajax_referer('ai_assistant_chat', '_wpnonce');
+
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        wp_send_json_success([
+            'provider' => get_option('ai_assistant_provider', 'anthropic'),
+            'model' => get_option('ai_assistant_model', ''),
         ]);
     }
 
@@ -248,7 +262,12 @@ class Settings {
                         <button type="button" class="ai-sidebar-toggle" id="ai-sidebar-toggle">
                             <span class="dashicons dashicons-menu"></span> <?php esc_html_e('Chats', 'ai-assistant'); ?>
                         </button>
-                        <label class="ai-yolo-label" title="Skip confirmation prompts for destructive actions"><input type="checkbox" id="ai-assistant-yolo"> YOLO Mode</label>
+                        <div class="ai-header-actions">
+                            <button type="button" id="ai-assistant-summarize" class="ai-header-btn" title="<?php esc_attr_e('Generate conversation summary', 'ai-assistant'); ?>" style="display: none;">
+                                <span class="dashicons dashicons-media-text"></span>
+                            </button>
+                            <label class="ai-yolo-label" title="<?php esc_attr_e('Skip confirmation prompts for destructive actions', 'ai-assistant'); ?>"><input type="checkbox" id="ai-assistant-yolo"> YOLO Mode</label>
+                        </div>
                     </div>
                     <div class="ai-assistant-chat-container">
                         <div id="ai-assistant-messages"></div>
@@ -300,6 +319,7 @@ class Settings {
         ]);
         register_setting('ai_assistant_settings', 'ai_assistant_local_endpoint');
         register_setting('ai_assistant_settings', 'ai_assistant_local_model');
+        register_setting('ai_assistant_settings', 'ai_assistant_summarization_model');
         register_setting('ai_assistant_settings', 'ai_assistant_role_permissions');
 
         // Display settings
@@ -349,6 +369,14 @@ class Settings {
             'ai_assistant_model',
             __('Model', 'ai-assistant'),
             [$this, 'model_field_callback'],
+            'ai-assistant-settings',
+            'ai_assistant_provider_section'
+        );
+
+        add_settings_field(
+            'ai_assistant_summarization_model',
+            __('Summarization Model', 'ai-assistant'),
+            [$this, 'summarization_model_field_callback'],
             'ai-assistant-settings',
             'ai_assistant_provider_section'
         );
@@ -600,7 +628,23 @@ class Settings {
             var aiAssistantCurrentProvider = '<?php echo esc_js($provider); ?>';
             var aiAssistantAnthropicKey = '<?php echo esc_js($anthropic_key); ?>';
             var aiAssistantOpenAIKey = '<?php echo esc_js($openai_key); ?>';
+            var aiAssistantSummarizationModel = '<?php echo esc_js(get_option('ai_assistant_summarization_model', '')); ?>';
         </script>
+        <?php
+    }
+
+    /**
+     * Summarization model selection field
+     */
+    public function summarization_model_field_callback() {
+        $model = get_option('ai_assistant_summarization_model', '');
+        ?>
+        <select name="ai_assistant_summarization_model" id="ai_assistant_summarization_model">
+            <option value=""><?php esc_html_e('Same as chat model (default)', 'ai-assistant'); ?></option>
+        </select>
+        <p class="description">
+            <?php esc_html_e('Model used for generating conversation summaries. Choose a faster/cheaper model to reduce costs.', 'ai-assistant'); ?>
+        </p>
         <?php
     }
 
@@ -741,6 +785,19 @@ class Settings {
                 return null;
             }
 
+            // Populate summarization model dropdown with same models
+            function populateSummarizationModels(models) {
+                var $sumSelect = $('#ai_assistant_summarization_model');
+                $sumSelect.empty();
+                $sumSelect.append('<option value="">Same as chat model (default)</option>');
+                if (models && models.length > 0) {
+                    models.forEach(function(model) {
+                        var selected = model.id === aiAssistantSummarizationModel ? 'selected' : '';
+                        $sumSelect.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
+                    });
+                }
+            }
+
             // Load models for selected provider
             function loadModels(provider) {
                 var $select = $('#ai_assistant_model');
@@ -774,6 +831,7 @@ class Settings {
                                     var selected = model.id === selectedModel ? 'selected' : '';
                                     $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
                                 });
+                                populateSummarizationModels(models);
                             } else {
                                 $select.html('<option value="">Failed to load models - check API key</option>');
                             }
@@ -807,6 +865,7 @@ class Settings {
                                     var selected = model.id === selectedModel ? 'selected' : '';
                                     $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
                                 });
+                                populateSummarizationModels(models);
                             } else {
                                 $select.html('<option value="">Failed to load models - check API key</option>');
                             }
@@ -885,6 +944,7 @@ class Settings {
                         var selected = model.id === selectedModel ? 'selected' : '';
                         $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
                     });
+                    populateSummarizationModels(models);
                 } else {
                     $select.html('<option value="">No models found - check if server is running</option>');
                 }

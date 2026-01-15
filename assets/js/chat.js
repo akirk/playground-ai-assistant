@@ -22,6 +22,7 @@
         draftHistoryIndex: -1,
         draftHistoryMax: 50,
         pendingNewChat: false,
+        pendingChatOriginalModelInfo: null,
 
         init: function() {
             this.bindEvents();
@@ -161,6 +162,12 @@
             $(document).on('click', '#ai-assistant-save-chat', function(e) {
                 e.preventDefault();
                 self.saveConversation();
+            });
+
+            // Summarize conversation button
+            $(document).on('click', '#ai-assistant-summarize', function(e) {
+                e.preventDefault();
+                self.manualSummarizeConversation();
             });
 
             // Load conversation button
@@ -502,6 +509,16 @@
                             max_length: { type: 'number', description: 'Maximum characters to return per element (default: 5000). Use a smaller value for large pages.' }
                         },
                         required: ['selector']
+                    }
+                },
+                {
+                    name: 'summarize_conversation',
+                    description: 'Generate a compact summary of a conversation and store it for future reference. Use this when a conversation is getting long or when the user wants to preserve context before starting a new chat. The summary captures key topics, decisions, files modified, and important context.',
+                    input_schema: {
+                        type: 'object',
+                        properties: {
+                            conversation_id: { type: 'number', description: 'The conversation ID to summarize. Use 0 or omit to summarize the current conversation.' }
+                        }
                     }
                 }
             ];
@@ -1023,6 +1040,10 @@
                 return this.executeGetPageHtml(toolCall);
             }
 
+            if (toolName === 'summarize_conversation') {
+                return this.executeSummarizeConversation(toolCall);
+            }
+
             return new Promise(function(resolve, reject) {
                 $.ajax({
                     url: aiAssistantConfig.ajaxUrl,
@@ -1188,6 +1209,249 @@
                         success: false
                     });
                 }
+            });
+        },
+
+        executeSummarizeConversation: function(toolCall) {
+            var self = this;
+            var args = toolCall.arguments || {};
+            var targetConversationId = args.conversation_id || this.conversationId;
+
+            return new Promise(function(resolve) {
+                if (!targetConversationId || targetConversationId <= 0) {
+                    resolve({
+                        id: toolCall.id,
+                        name: 'summarize_conversation',
+                        input: args,
+                        result: { error: 'No conversation to summarize. Save the conversation first.' },
+                        success: false
+                    });
+                    return;
+                }
+
+                // Get conversation data for summarization
+                $.ajax({
+                    url: aiAssistantConfig.ajaxUrl,
+                    type: 'POST',
+                    data: {
+                        action: 'ai_assistant_get_conversation_for_summary',
+                        _wpnonce: aiAssistantConfig.nonce,
+                        conversation_id: targetConversationId
+                    },
+                    success: function(response) {
+                        if (!response.success) {
+                            resolve({
+                                id: toolCall.id,
+                                name: 'summarize_conversation',
+                                input: args,
+                                result: { error: response.data?.message || 'Failed to load conversation' },
+                                success: false
+                            });
+                            return;
+                        }
+
+                        var convData = response.data;
+
+                        // If summary already exists, return it
+                        if (convData.existing_summary) {
+                            resolve({
+                                id: toolCall.id,
+                                name: 'summarize_conversation',
+                                input: args,
+                                result: {
+                                    conversation_id: targetConversationId,
+                                    title: convData.title,
+                                    summary: convData.existing_summary,
+                                    message: 'Existing summary retrieved'
+                                },
+                                success: true
+                            });
+                            return;
+                        }
+
+                        // Generate summary using LLM
+                        self.generateConversationSummary(convData).then(function(summary) {
+                            // Save the summary
+                            $.ajax({
+                                url: aiAssistantConfig.ajaxUrl,
+                                type: 'POST',
+                                data: {
+                                    action: 'ai_assistant_save_summary',
+                                    _wpnonce: aiAssistantConfig.nonce,
+                                    conversation_id: targetConversationId,
+                                    summary: summary
+                                },
+                                success: function(saveResponse) {
+                                    resolve({
+                                        id: toolCall.id,
+                                        name: 'summarize_conversation',
+                                        input: args,
+                                        result: {
+                                            conversation_id: targetConversationId,
+                                            title: convData.title,
+                                            summary: summary,
+                                            message: 'Summary generated and saved'
+                                        },
+                                        success: true
+                                    });
+                                },
+                                error: function() {
+                                    resolve({
+                                        id: toolCall.id,
+                                        name: 'summarize_conversation',
+                                        input: args,
+                                        result: {
+                                            conversation_id: targetConversationId,
+                                            summary: summary,
+                                            message: 'Summary generated but failed to save'
+                                        },
+                                        success: true
+                                    });
+                                }
+                            });
+                        }).catch(function(error) {
+                            resolve({
+                                id: toolCall.id,
+                                name: 'summarize_conversation',
+                                input: args,
+                                result: { error: 'Failed to generate summary: ' + error.message },
+                                success: false
+                            });
+                        });
+                    },
+                    error: function() {
+                        resolve({
+                            id: toolCall.id,
+                            name: 'summarize_conversation',
+                            input: args,
+                            result: { error: 'Failed to load conversation data' },
+                            success: false
+                        });
+                    }
+                });
+            });
+        },
+
+        generateConversationSummary: function(convData) {
+            var self = this;
+            var provider = aiAssistantConfig.provider;
+            var model = aiAssistantConfig.summarizationModel || aiAssistantConfig.model;
+
+            var summaryPrompt = 'Summarize this conversation concisely. Include:\n' +
+                '1. Main topics discussed\n' +
+                '2. Key decisions or outcomes\n' +
+                '3. Files created or modified (if any)\n' +
+                '4. Important context for continuing this work later\n\n' +
+                'Keep the summary under 500 words. Focus on information that would help someone resume this conversation.\n\n' +
+                'Conversation:\n' + convData.messages_text;
+
+            if (provider === 'anthropic') {
+                return this.callAnthropicForSummary(model, summaryPrompt);
+            } else if (provider === 'openai') {
+                return this.callOpenAIForSummary(model, summaryPrompt);
+            } else {
+                return this.callLocalForSummary(model, summaryPrompt);
+            }
+        },
+
+        callAnthropicForSummary: function(model, prompt) {
+            return new Promise(function(resolve, reject) {
+                fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': aiAssistantConfig.apiKey,
+                        'anthropic-version': '2023-06-01',
+                        'anthropic-dangerous-direct-browser-access': 'true'
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        max_tokens: 1024,
+                        messages: [{ role: 'user', content: prompt }]
+                    })
+                }).then(function(response) {
+                    return response.json();
+                }).then(function(data) {
+                    if (data.content && data.content[0] && data.content[0].text) {
+                        resolve(data.content[0].text);
+                    } else if (data.error) {
+                        reject(new Error(data.error.message));
+                    } else {
+                        reject(new Error('Invalid response from Anthropic'));
+                    }
+                }).catch(reject);
+            });
+        },
+
+        callOpenAIForSummary: function(model, prompt) {
+            return new Promise(function(resolve, reject) {
+                fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + aiAssistantConfig.apiKey
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        max_tokens: 1024,
+                        messages: [{ role: 'user', content: prompt }]
+                    })
+                }).then(function(response) {
+                    return response.json();
+                }).then(function(data) {
+                    if (data.choices && data.choices[0] && data.choices[0].message) {
+                        resolve(data.choices[0].message.content);
+                    } else if (data.error) {
+                        reject(new Error(data.error.message));
+                    } else {
+                        reject(new Error('Invalid response from OpenAI'));
+                    }
+                }).catch(reject);
+            });
+        },
+
+        callLocalForSummary: function(model, prompt) {
+            var endpoint = aiAssistantConfig.localEndpoint || 'http://localhost:11434';
+            endpoint = endpoint.replace(/\/$/, '');
+
+            return new Promise(function(resolve, reject) {
+                // Try OpenAI-compatible endpoint first
+                fetch(endpoint + '/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: model,
+                        max_tokens: 1024,
+                        messages: [{ role: 'user', content: prompt }]
+                    })
+                }).then(function(response) {
+                    return response.json();
+                }).then(function(data) {
+                    if (data.choices && data.choices[0] && data.choices[0].message) {
+                        resolve(data.choices[0].message.content);
+                    } else {
+                        reject(new Error('Invalid response from local LLM'));
+                    }
+                }).catch(function() {
+                    // Try Ollama native endpoint
+                    fetch(endpoint + '/api/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: model,
+                            prompt: prompt,
+                            stream: false
+                        })
+                    }).then(function(response) {
+                        return response.json();
+                    }).then(function(data) {
+                        if (data.response) {
+                            resolve(data.response);
+                        } else {
+                            reject(new Error('Invalid response from Ollama'));
+                        }
+                    }).catch(reject);
+                });
             });
         },
 
@@ -1703,17 +1967,47 @@
         },
 
         newChat: function() {
+            var self = this;
+
             // If there's an existing conversation, just hide it visually (pending new chat)
             if (this.messages.length > 0 && !this.pendingNewChat) {
                 this.pendingNewChat = true;
                 $('#ai-assistant-messages').addClass('ai-pending-new-chat');
                 $('#ai-token-count').hide();
                 $('#ai-assistant-new-chat').text('Undo').attr('id', 'ai-assistant-undo-new-chat');
+
+                // Fetch current settings and update the provider info message
+                var $modelInfo = $('.ai-model-info');
+                this.pendingChatOriginalModelInfo = $modelInfo.html();
+
+                $.ajax({
+                    url: aiAssistantConfig.ajaxUrl,
+                    type: 'POST',
+                    data: {
+                        action: 'ai_assistant_get_current_settings',
+                        _wpnonce: aiAssistantConfig.nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            aiAssistantConfig.provider = response.data.provider;
+                            aiAssistantConfig.model = response.data.model;
+                            var providerName = response.data.provider === 'anthropic' ? 'Anthropic' :
+                                               response.data.provider === 'openai' ? 'OpenAI' :
+                                               response.data.provider === 'local' ? 'Local LLM' : response.data.provider;
+                            var modelInfo = response.data.model ? ' (' + response.data.model + ')' : '';
+                            $modelInfo.find('.ai-message-content').html("You're chatting with <strong>" + providerName + '</strong>' + modelInfo);
+                        }
+                    }
+                });
+
                 $('#ai-assistant-input').focus();
                 return;
             }
 
-            // Actually start a new chat
+            this.startNewChat();
+        },
+
+        startNewChat: function() {
             this.messages = [];
             this.pendingActions = [];
             this.conversationId = 0;
@@ -1729,6 +2023,7 @@
             $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
             this.updateSidebarSelection();
             this.loadWelcomeMessage();
+            this.updateSummarizeButton();
             $('#ai-assistant-input').focus();
         },
 
@@ -1737,6 +2032,13 @@
             $('#ai-assistant-messages').removeClass('ai-pending-new-chat');
             $('#ai-token-count').show();
             $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
+
+            // Restore original provider info
+            if (this.pendingChatOriginalModelInfo) {
+                $('.ai-model-info').html(this.pendingChatOriginalModelInfo);
+                this.pendingChatOriginalModelInfo = null;
+            }
+
             this.scrollToBottom();
             $('#ai-assistant-input').focus();
         },
@@ -1989,6 +2291,9 @@
                         if (isNew && self.isFullPage) {
                             self.loadSidebarConversations();
                         }
+
+                        // Update summarize button visibility
+                        self.updateSummarizeButton();
                     } else {
                         console.error('[AI Assistant] Save failed:', response.data);
                         if (!silent) {
@@ -2147,6 +2452,9 @@
 
                         // Auto-read files that were worked on in this conversation
                         self.autoReadConversationFiles();
+
+                        // Update summarize button visibility
+                        self.updateSummarizeButton();
 
                     } else {
                         self.addMessage('error', 'Failed to load: ' + (response.data.message || 'Unknown error'));
@@ -2507,6 +2815,89 @@
                     return; // generateConversationTitle will save after title is generated
                 }
                 this.saveConversation(true);
+            }
+        },
+
+        manualSummarizeConversation: function() {
+            var self = this;
+
+            if (!this.conversationId || this.conversationId <= 0) {
+                this.addMessage('system', 'Please save the conversation first before generating a summary.');
+                return;
+            }
+
+            if (this.isLoading) {
+                return;
+            }
+
+            var $btn = $('#ai-assistant-summarize');
+            $btn.prop('disabled', true).addClass('loading');
+            this.addMessage('system', 'Generating conversation summary...');
+
+            // Get conversation data
+            $.ajax({
+                url: aiAssistantConfig.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'ai_assistant_get_conversation_for_summary',
+                    _wpnonce: aiAssistantConfig.nonce,
+                    conversation_id: this.conversationId
+                },
+                success: function(response) {
+                    if (!response.success) {
+                        self.addMessage('error', 'Failed to load conversation: ' + (response.data?.message || 'Unknown error'));
+                        $btn.prop('disabled', false).removeClass('loading');
+                        return;
+                    }
+
+                    var convData = response.data;
+
+                    if (convData.existing_summary) {
+                        self.addMessage('system', 'Existing summary:\n\n' + convData.existing_summary);
+                        $btn.prop('disabled', false).removeClass('loading');
+                        return;
+                    }
+
+                    // Generate new summary
+                    self.generateConversationSummary(convData).then(function(summary) {
+                        // Save it
+                        $.ajax({
+                            url: aiAssistantConfig.ajaxUrl,
+                            type: 'POST',
+                            data: {
+                                action: 'ai_assistant_save_summary',
+                                _wpnonce: aiAssistantConfig.nonce,
+                                conversation_id: self.conversationId,
+                                summary: summary
+                            },
+                            success: function() {
+                                self.addMessage('system', 'Summary generated and saved:\n\n' + summary);
+                            },
+                            error: function() {
+                                self.addMessage('system', 'Summary generated (but failed to save):\n\n' + summary);
+                            },
+                            complete: function() {
+                                $btn.prop('disabled', false).removeClass('loading');
+                            }
+                        });
+                    }).catch(function(error) {
+                        self.addMessage('error', 'Failed to generate summary: ' + error.message);
+                        $btn.prop('disabled', false).removeClass('loading');
+                    });
+                },
+                error: function() {
+                    self.addMessage('error', 'Failed to load conversation data');
+                    $btn.prop('disabled', false).removeClass('loading');
+                }
+            });
+        },
+
+        updateSummarizeButton: function() {
+            var $btn = $('#ai-assistant-summarize');
+            if (this.conversationId && this.conversationId > 0 && this.messages.length > 0) {
+                $btn.show();
+            } else {
+                $btn.hide();
             }
         },
 
