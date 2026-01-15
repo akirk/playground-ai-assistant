@@ -158,6 +158,32 @@
                 self.manualSummarizeConversation();
             });
 
+            $(document).on('click', '.ai-action-copy', function(e) {
+                e.preventDefault();
+                var $msg = $(this).closest('.ai-message');
+                var text = $msg.attr('data-raw-content') || $msg.find('.ai-message-content').text();
+                navigator.clipboard.writeText(text).then(function() {
+                    var $btn = $(e.currentTarget);
+                    $btn.addClass('ai-action-success');
+                    setTimeout(function() { $btn.removeClass('ai-action-success'); }, 1500);
+                });
+            });
+
+            $(document).on('click', '.ai-action-retry', function(e) {
+                e.preventDefault();
+                if (self.isLoading) return;
+                self.retryLastResponse();
+            });
+
+            $(document).on('click', '.ai-action-summarize', function(e) {
+                e.preventDefault();
+                self.manualSummarizeConversation();
+            });
+
+            $(document).on('click', '.ai-summary-header', function() {
+                $(this).closest('.ai-conversation-summary').toggleClass('collapsed');
+            });
+
             $(document).on('click', '#ai-assistant-load-chat', function(e) {
                 e.preventDefault();
                 self.showConversationList();
@@ -347,6 +373,31 @@
             if (force || this.isNearBottom()) {
                 $messages.scrollTop($messages[0].scrollHeight);
             }
+        },
+
+        retryLastResponse: function() {
+            if (this.messages.length < 2) return;
+
+            var lastAssistantIdx = -1;
+            for (var i = this.messages.length - 1; i >= 0; i--) {
+                if (this.messages[i].role === 'assistant') {
+                    lastAssistantIdx = i;
+                    break;
+                }
+            }
+
+            if (lastAssistantIdx === -1) return;
+
+            this.messages = this.messages.slice(0, lastAssistantIdx);
+
+            var $messages = $('#ai-assistant-messages');
+            var $lastAssistant = $messages.find('.ai-message-assistant').last();
+            if ($lastAssistant.length) {
+                $lastAssistant.remove();
+            }
+
+            this.updateSummarizeVisibility();
+            this.callLLM();
         },
 
         escapeHtml: function(text) {

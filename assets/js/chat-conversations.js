@@ -324,6 +324,9 @@
                         self.updateTokenCount();
 
                         self.loadWelcomeMessage(convProvider, convModel);
+                        if (response.data.summary) {
+                            self.showConversationSummary(response.data.summary);
+                        }
                         self.rebuildMessagesUI();
                         self.updateSidebarSelection();
                         $('#ai-assistant-input').focus();
@@ -774,7 +777,7 @@
                                 summary: summary
                             },
                             success: function() {
-                                self.addMessage('system', 'Summary generated and saved:\n\n' + summary);
+                                self.addMessage('system', 'Summary generated and saved to post excerpt:\n\n' + summary);
                             },
                             error: function() {
                                 self.addMessage('system', 'Summary generated (but failed to save):\n\n' + summary);
@@ -795,13 +798,23 @@
             });
         },
 
+        showConversationSummary: function(summary) {
+            var $messages = $('#ai-assistant-messages');
+            var html = '<div class="ai-conversation-summary">' +
+                '<div class="ai-summary-header">' +
+                '<span class="ai-summary-icon">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>' +
+                '</span>' +
+                '<span class="ai-summary-title">Conversation Summary</span>' +
+                '<span class="ai-summary-toggle">&#9660;</span>' +
+                '</div>' +
+                '<div class="ai-summary-content">' + this.formatContent(summary) + '</div>' +
+                '</div>';
+            $messages.append(html);
+        },
+
         updateSummarizeButton: function() {
-            var $btn = $('#ai-assistant-summarize');
-            if (this.conversationId && this.conversationId > 0 && this.messages.length > 0) {
-                $btn.show();
-            } else {
-                $btn.hide();
-            }
+            this.updateSummarizeVisibility();
         }
     });
 

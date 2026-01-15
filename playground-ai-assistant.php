@@ -162,24 +162,6 @@ final class AI_Assistant {
                 'subscriber' => 'none'
             ]);
         }
-
-        // Create conversation history table
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'ai_assistant_conversations';
-        $charset_collate = $wpdb->get_charset_collate();
-
-        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            user_id bigint(20) NOT NULL,
-            messages longtext NOT NULL,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            KEY user_id (user_id)
-        ) $charset_collate;";
-
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        dbDelta($sql);
     }
 
     /**

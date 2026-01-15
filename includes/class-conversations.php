@@ -251,6 +251,7 @@ class Conversations {
             'conversation_id' => $conversation_id,
             'title' => $post->post_title,
             'messages_base64' => $post->post_content ?: '',
+            'summary' => $post->post_excerpt ?: '',
             'provider' => get_post_meta($conversation_id, '_ai_provider', true) ?: '',
             'model' => get_post_meta($conversation_id, '_ai_model', true) ?: '',
         ]);

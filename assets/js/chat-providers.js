@@ -203,6 +203,8 @@
 
                 if (!textContent) {
                     $reply.remove();
+                } else {
+                    this.finalizeReply($reply);
                 }
 
                 this.messages.push({ role: 'assistant', content: contentBlocks });
@@ -292,6 +294,8 @@
 
                 if (!textContent) {
                     $reply.remove();
+                } else {
+                    this.finalizeReply($reply);
                 }
 
                 var message = { role: 'assistant', content: textContent || null };
@@ -417,6 +421,8 @@
 
                 if (!textContent) {
                     $reply.remove();
+                } else {
+                    this.finalizeReply($reply);
                 }
 
                 var message = { role: 'assistant', content: textContent || null };

@@ -9,19 +9,48 @@
             if (extraClass) {
                 messageClass += ' ' + extraClass;
             }
-            content = this.formatContent(content);
+            var formattedContent = this.formatContent(content);
 
             var $message = $('<div class="' + messageClass + '">' +
-                '<div class="ai-message-content">' + content + '</div>' +
+                '<div class="ai-message-content">' + formattedContent + '</div>' +
                 '</div>');
+
+            if (role === 'assistant' && !extraClass) {
+                $message.attr('data-raw-content', content);
+                $message.append(this.getMessageActions());
+                this.updateSummarizeVisibility();
+            }
 
             $messages.append($message);
             this.scrollToBottom();
         },
 
+        getMessageActions: function() {
+            return '<div class="ai-message-actions">' +
+                '<button type="button" class="ai-action-btn ai-action-copy" title="Copy">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>' +
+                '</button>' +
+                '<button type="button" class="ai-action-btn ai-action-retry" title="Retry">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>' +
+                '</button>' +
+                '<button type="button" class="ai-action-btn ai-action-summarize" title="Summarize conversation">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>' +
+                '</button>' +
+                '</div>';
+        },
+
+        updateSummarizeVisibility: function() {
+            var $messages = $('#ai-assistant-messages');
+            $messages.find('.ai-action-summarize').hide();
+            var $lastAssistant = $messages.find('.ai-message-assistant').last();
+            if ($lastAssistant.length && this.conversationId && this.conversationId > 0) {
+                $lastAssistant.find('.ai-action-summarize').show();
+            }
+        },
+
         startReply: function() {
             var $messages = $('#ai-assistant-messages');
-            var $message = $('<div class="ai-message ai-message-assistant">' +
+            var $message = $('<div class="ai-message ai-message-assistant ai-message-streaming">' +
                 '<div class="ai-message-content"></div>' +
                 '</div>');
             $messages.append($message);
@@ -32,7 +61,16 @@
         updateReply: function($message, text) {
             var $content = $message.find('.ai-message-content');
             $content.html(this.formatContent(text));
+            $message.attr('data-raw-content', text);
             this.scrollToBottom();
+        },
+
+        finalizeReply: function($message) {
+            $message.removeClass('ai-message-streaming');
+            if (!$message.find('.ai-message-actions').length) {
+                $message.append(this.getMessageActions());
+            }
+            this.updateSummarizeVisibility();
         },
 
         addToolUseMessage: function(toolName, input) {

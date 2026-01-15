@@ -280,6 +280,133 @@
     border: 1px solid #dba617;
 }
 
+/* Message action buttons */
+.ai-message-actions {
+    display: flex;
+    gap: 2px;
+    margin-top: 6px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.ai-message:hover .ai-message-actions,
+.ai-message-actions:focus-within {
+    opacity: 1;
+}
+
+.ai-message-streaming .ai-message-actions {
+    display: none;
+}
+
+.ai-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #646970;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.ai-action-btn:hover {
+    background: #f0f0f1;
+    color: #1d2327;
+}
+
+.ai-action-btn:active {
+    background: #e0e0e0;
+}
+
+.ai-action-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.ai-action-btn.ai-action-success {
+    color: #00a32a;
+}
+
+.ai-action-btn.ai-action-success svg {
+    animation: ai-check-pop 0.3s ease;
+}
+
+@keyframes ai-check-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
+
+.ai-action-summarize {
+    display: none;
+}
+
+/* Conversation summary block */
+.ai-conversation-summary {
+    background: #f0f6fc;
+    border: 1px solid #c3d9ed;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+.ai-summary-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.ai-summary-header:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.ai-summary-icon {
+    display: flex;
+    color: #2271b1;
+}
+
+.ai-summary-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.ai-summary-title {
+    font-weight: 600;
+    font-size: 12px;
+    color: #1d2327;
+    flex: 1;
+}
+
+.ai-summary-toggle {
+    font-size: 10px;
+    color: #646970;
+    transition: transform 0.2s;
+}
+
+.ai-conversation-summary.collapsed .ai-summary-toggle {
+    transform: rotate(-90deg);
+}
+
+.ai-summary-content {
+    padding: 0 12px 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #1d2327;
+    border-top: 1px solid #c3d9ed;
+    padding-top: 10px;
+    margin-top: 0;
+}
+
+.ai-conversation-summary.collapsed .ai-summary-content {
+    display: none;
+}
+
 /* Code in messages */
 .ai-message-content code {
     background: rgba(0, 0, 0, 0.08);

@@ -188,17 +188,28 @@ class Settings {
                        . '</ul>',
         ]);
 
-        $tools = new Tools();
-        $tools_list = '<ul>';
-        foreach ($tools->get_all_tools() as $tool) {
-            $tools_list .= '<li><code>' . esc_html($tool['name']) . '</code> - ' . esc_html($tool['description']) . '</li>';
-        }
-        $tools_list .= '</ul>';
-
         $screen->add_help_tab([
             'id'      => 'ai-assistant-tools',
             'title'   => __('Available Tools', 'ai-assistant'),
-            'content' => '<p>' . __('The AI Assistant has access to the following tools:', 'ai-assistant') . '</p>' . $tools_list,
+            'content' => '<p>' . __('The AI Assistant has access to the following tools:', 'ai-assistant') . '</p>'
+                       . '<ul id="ai-tools-list"><li><em>Loading...</em></li></ul>'
+                       . '<script>
+                           jQuery(function($) {
+                               function populateTools() {
+                                   if (typeof window.aiAssistant !== "undefined" && window.aiAssistant.getTools) {
+                                       var tools = window.aiAssistant.getTools();
+                                       var $list = $("#ai-tools-list");
+                                       $list.empty();
+                                       tools.forEach(function(tool) {
+                                           $list.append("<li><code>" + tool.name + "</code> - " + $("<div>").text(tool.description).html() + "</li>");
+                                       });
+                                   } else {
+                                       setTimeout(populateTools, 100);
+                                   }
+                               }
+                               populateTools();
+                           });
+                       </script>',
         ]);
 
         $skills_content = $this->get_skills_help_content();
@@ -263,6 +274,8 @@ class Settings {
                             <span class="dashicons dashicons-menu"></span> <?php esc_html_e('Chats', 'ai-assistant'); ?>
                         </button>
                         <div class="ai-header-actions">
+                            <span id="ai-token-count" class="ai-token-count" title="<?php esc_attr_e('Estimated token usage', 'ai-assistant'); ?>">0 tokens</span>
+                            <span class="ai-header-sep">|</span>
                             <button type="button" id="ai-assistant-summarize" class="ai-header-btn" title="<?php esc_attr_e('Generate conversation summary', 'ai-assistant'); ?>" style="display: none;">
                                 <span class="dashicons dashicons-media-text"></span>
                             </button>
