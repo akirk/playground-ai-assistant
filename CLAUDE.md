@@ -26,6 +26,18 @@ playground-ai-assistant/
 └── ai-assistant.php              # Main plugin file, singleton
 ```
 
+## Design Decisions
+
+### Why Custom Implementation (not wp-ai-client)
+
+`wp-ai-client` routes all AI requests through WordPress REST endpoints (`/wp-ai/v1/generate`), meaning the PHP server communicates with AI providers.
+
+This plugin makes AI calls directly from the browser (JavaScript → AI provider). This allows users to connect to local LLMs (like Ollama running on `localhost`) even when WordPress is hosted remotely. With `wp-ai-client`, a remote server would try to reach `localhost:11434` on itself — which wouldn't work.
+
+The browser-side approach also enables full control over the tool calling loop, confirmation dialogs, and streaming responses. Tools can be a mix of client-side (e.g., `get_page_html`, `summarize_conversation`) and server-side via AJAX (e.g., `run_php`, `write_file`).
+
+Note: `wp-ai-client` does work in WordPress Playground (where PHP runs in-browser), but breaks for local LLMs when WordPress is hosted elsewhere.
+
 ## JavaScript Architecture
 
 All JS uses a shared namespace pattern via `window.aiAssistant`:
