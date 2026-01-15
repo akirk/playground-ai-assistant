@@ -45,9 +45,49 @@ class Chat_UI {
         );
 
         wp_enqueue_script(
-            'ai-assistant-chat',
-            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat.js',
+            'ai-assistant-chat-core',
+            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-core.js',
             ['jquery'],
+            AI_ASSISTANT_VERSION,
+            true
+        );
+
+        wp_enqueue_script(
+            'ai-assistant-chat-tools',
+            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-tools.js',
+            ['ai-assistant-chat-core'],
+            AI_ASSISTANT_VERSION,
+            true
+        );
+
+        wp_enqueue_script(
+            'ai-assistant-chat-providers',
+            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-providers.js',
+            ['ai-assistant-chat-core'],
+            AI_ASSISTANT_VERSION,
+            true
+        );
+
+        wp_enqueue_script(
+            'ai-assistant-chat-execution',
+            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-execution.js',
+            ['ai-assistant-chat-core'],
+            AI_ASSISTANT_VERSION,
+            true
+        );
+
+        wp_enqueue_script(
+            'ai-assistant-chat-ui',
+            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-ui.js',
+            ['ai-assistant-chat-core'],
+            AI_ASSISTANT_VERSION,
+            true
+        );
+
+        wp_enqueue_script(
+            'ai-assistant-chat-conversations',
+            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-conversations.js',
+            ['ai-assistant-chat-core', 'ai-assistant-chat-ui', 'ai-assistant-chat-providers'],
             AI_ASSISTANT_VERSION,
             true
         );
@@ -63,7 +103,7 @@ class Chat_UI {
             $api_key = $settings->get_api_key('openai');
         }
 
-        wp_localize_script('ai-assistant-chat', 'aiAssistantConfig', [
+        wp_localize_script('ai-assistant-chat-core', 'aiAssistantConfig', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('ai_assistant_chat'),
             'userPermission' => $settings->get_user_permission_level(),
