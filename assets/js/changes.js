@@ -131,7 +131,15 @@
         getSelectedFileIds: function() {
             var ids = [];
             $('.ai-file-checkbox:checked').each(function() {
-                ids.push($(this).data('id'));
+                var allIds = $(this).data('ids');
+                if (allIds) {
+                    // data-ids contains comma-separated list of all patch IDs for this file
+                    String(allIds).split(',').forEach(function(id) {
+                        ids.push(parseInt(id, 10));
+                    });
+                } else {
+                    ids.push($(this).data('id'));
+                }
             });
             return ids;
         },
@@ -225,6 +233,8 @@
 
         toggleFilePreview: function($toggle) {
             var fileId = $toggle.data('id');
+            var allIds = $toggle.data('ids');
+            var fileIds = allIds ? String(allIds).split(',').map(function(id) { return parseInt(id, 10); }) : [fileId];
             var $preview = $('.ai-file-inline-preview[data-id="' + fileId + '"]');
             var $code = $preview.find('code');
             var isVisible = $preview.is(':visible');
@@ -240,7 +250,7 @@
                     $.post(aiChanges.ajaxUrl, {
                         action: 'ai_assistant_generate_diff',
                         nonce: aiChanges.nonce,
-                        file_ids: [fileId]
+                        file_ids: fileIds
                     }, function(response) {
                         if (response.success) {
                             $code.html(self.highlightDiff(response.data.diff));

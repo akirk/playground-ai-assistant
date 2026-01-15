@@ -170,17 +170,24 @@ class Changes_Admin {
                     </div>
                     <div class="ai-changes-files" style="display: none;">
                         <?php foreach ($data['files'] as $file): ?>
+                        <?php $all_ids = isset($file['ids']) ? implode(',', $file['ids']) : $file['id']; ?>
                         <div class="ai-changes-file">
                             <div class="ai-changes-file-row">
-                                <button type="button" class="ai-file-preview-toggle" data-id="<?php echo esc_attr($file['id']); ?>" title="<?php esc_attr_e('Preview diff', 'ai-assistant'); ?>">▶</button>
+                                <button type="button" class="ai-file-preview-toggle" data-id="<?php echo esc_attr($file['id']); ?>" data-ids="<?php echo esc_attr($all_ids); ?>" title="<?php esc_attr_e('Preview diff', 'ai-assistant'); ?>">▶</button>
                                 <label>
                                     <input type="checkbox" class="ai-file-checkbox"
                                            data-id="<?php echo esc_attr($file['id']); ?>"
+                                           data-ids="<?php echo esc_attr($all_ids); ?>"
                                            data-dir="<?php echo esc_attr($dir); ?>">
                                     <span class="ai-changes-file-path"><?php echo esc_html($file['relative_path'] ?: basename($file['path'])); ?></span>
                                     <span class="ai-changes-type ai-changes-type-<?php echo esc_attr($file['change_type']); ?>">
                                         <?php echo esc_html(ucfirst($file['change_type'])); ?>
                                     </span>
+                                    <?php if (isset($file['patch_count']) && $file['patch_count'] > 1): ?>
+                                    <span class="ai-changes-patches" title="<?php esc_attr_e('Number of edits to this file', 'ai-assistant'); ?>">
+                                        <?php echo esc_html($file['patch_count']); ?> edits
+                                    </span>
+                                    <?php endif; ?>
                                     <?php if ($file['is_reverted']): ?>
                                     <span class="ai-changes-type ai-changes-type-reverted">
                                         <?php esc_html_e('Reverted', 'ai-assistant'); ?>
@@ -199,7 +206,7 @@ class Changes_Admin {
                                     <?php esc_html_e('Reapply', 'ai-assistant'); ?>
                                 </button>
                                 <?php else: ?>
-                                <button type="button" class="button button-small ai-revert-file" data-id="<?php echo esc_attr($file['id']); ?>" title="<?php esc_attr_e('Revert this change', 'ai-assistant'); ?>">
+                                <button type="button" class="button button-small ai-revert-file" data-id="<?php echo esc_attr($file['id']); ?>" data-ids="<?php echo esc_attr($all_ids); ?>" title="<?php esc_attr_e('Revert this change', 'ai-assistant'); ?>">
                                     <?php esc_html_e('Revert', 'ai-assistant'); ?>
                                 </button>
                                 <?php endif; ?>

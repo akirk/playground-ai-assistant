@@ -29,24 +29,28 @@ class Change_Tracker {
     }
 
     public function track_change(string $path, string $change_type, ?string $original_content = null): int {
-        $existing = $this->get_existing_change_for_path($path);
+        $existing_changes = $this->get_changes_for_path($path);
 
-        if ($existing) {
-            $existing_type = get_post_meta($existing->ID, '_change_type', true);
+        if (!empty($existing_changes)) {
+            $first_change = end($existing_changes); // Oldest first (ordered DESC, so end is oldest)
+            $first_type = get_post_meta($first_change->ID, '_change_type', true);
+            $last_change = reset($existing_changes); // Most recent
 
-            // If file was created and now modified, keep it as "created"
-            if ($existing_type === 'created' && $change_type === 'modified') {
-                return $existing->ID;
-            }
-
-            // If file was created and now deleted, remove the record entirely
-            if ($existing_type === 'created' && $change_type === 'deleted') {
-                wp_delete_post($existing->ID, true);
+            // If file was created in this session and now deleted, remove all records
+            if ($first_type === 'created' && $change_type === 'deleted') {
+                foreach ($existing_changes as $change) {
+                    wp_delete_post($change->ID, true);
+                }
                 return 0;
             }
 
-            // For other cases, remove old record and create new one
-            wp_delete_post($existing->ID, true);
+            // If file was created and now modified, update the first record's type
+            // but still store this change as a new patch
+            if ($first_type === 'created' && $change_type === 'modified') {
+                // Don't create a new record, the "created" already captures the null->content change
+                // Just return the existing ID since the current file content IS the change
+                return $first_change->ID;
+            }
         }
 
         $is_binary = $original_content !== null && $this->is_binary($original_content);
@@ -88,28 +92,24 @@ class Change_Tracker {
             'post_type' => self::POST_TYPE,
             'posts_per_page' => -1,
             'orderby' => 'date',
-            'order' => 'DESC',
+            'order' => 'ASC', // Oldest first for proper patch ordering
         ]);
 
-        // Deduplicate: if a file was created and modified, keep only "created"
+        // Group patches by file path
         $by_path = [];
         foreach ($posts as $post) {
             $path = $post->post_title;
-            $change_type = get_post_meta($post->ID, '_change_type', true);
-
             if (!isset($by_path[$path])) {
-                $by_path[$path] = $post;
-            } elseif ($change_type === 'created') {
-                $by_path[$path] = $post;
+                $by_path[$path] = [];
             }
+            $by_path[$path][] = $post;
         }
 
         $directories = [];
 
-        foreach ($by_path as $path => $post) {
+        foreach ($by_path as $path => $file_posts) {
             $parts = explode('/', $path);
 
-            // Get top two levels as directory (e.g., "plugins/my-plugin")
             if (count($parts) >= 2) {
                 $dir = $parts[0] . '/' . $parts[1];
             } else {
@@ -124,14 +124,28 @@ class Change_Tracker {
                 ];
             }
 
+            $first_post = $file_posts[0];
+            $first_type = get_post_meta($first_post->ID, '_change_type', true);
+
+            // Collect all patch IDs for this file
+            $patch_ids = array_map(function($p) { return $p->ID; }, $file_posts);
+
+            // Determine overall change type based on first and last changes
+            $last_post = end($file_posts);
+            $last_type = get_post_meta($last_post->ID, '_change_type', true);
+            $overall_type = $last_type === 'deleted' ? 'deleted' : $first_type;
+
             $directories[$dir]['files'][] = [
-                'id' => $post->ID,
+                'id' => $first_post->ID,
+                'ids' => $patch_ids,
+                'patch_count' => count($file_posts),
                 'path' => $path,
                 'relative_path' => substr($path, strlen($dir) + 1),
-                'change_type' => get_post_meta($post->ID, '_change_type', true),
-                'is_binary' => get_post_meta($post->ID, '_is_binary', true) === '1',
-                'is_reverted' => get_post_meta($post->ID, '_is_reverted', true) === '1',
-                'date' => $post->post_date,
+                'change_type' => $overall_type,
+                'is_binary' => get_post_meta($first_post->ID, '_is_binary', true) === '1',
+                'is_reverted' => get_post_meta($first_post->ID, '_is_reverted', true) === '1',
+                'date' => $first_post->post_date,
+                'last_modified' => $last_post->post_date,
             ];
             $directories[$dir]['count']++;
         }
@@ -171,24 +185,64 @@ class Change_Tracker {
         ];
     }
 
-    public function generate_diff(array $file_ids): string {
+    public function get_file_patches(string $path): array {
+        $posts = $this->get_changes_for_path($path);
+        $patches = [];
+
+        // Reverse to get chronological order (oldest first)
+        $posts = array_reverse($posts);
+
+        foreach ($posts as $i => $post) {
+            $change = $this->get_change($post->ID);
+            if (!$change) {
+                continue;
+            }
+
+            // Determine what content this patch changed TO
+            // For intermediate patches, it's the next patch's "before" content
+            // For the last patch, it's the current file content
+            if (isset($posts[$i + 1])) {
+                $next_change = $this->get_change($posts[$i + 1]->ID);
+                $after_content = $next_change ? $next_change['original_content'] : '';
+            } else {
+                $full_path = WP_CONTENT_DIR . '/' . $path;
+                $after_content = file_exists($full_path) ? file_get_contents($full_path) : '';
+            }
+
+            $patches[] = [
+                'id' => $post->ID,
+                'before' => $change['original_content'],
+                'after' => $after_content,
+                'change_type' => $change['change_type'],
+                'is_binary' => $change['is_binary'],
+                'content_truncated' => $change['content_truncated'],
+                'date' => $change['date'],
+            ];
+        }
+
+        return $patches;
+    }
+
+    public function generate_diff(array $file_ids, bool $show_individual_patches = false): string {
         $diff_output = [];
 
+        // Group IDs by file path
+        $by_path = [];
         foreach ($file_ids as $id) {
             $change = $this->get_change($id);
             if (!$change) {
                 continue;
             }
-
             $path = $change['path'];
-            $change_type = $change['change_type'];
-            $original = $change['original_content'];
-            $is_binary = $change['is_binary'];
+            if (!isset($by_path[$path])) {
+                $by_path[$path] = [];
+            }
+            $by_path[$path][] = $change;
+        }
 
-            // Get current content
-            $full_path = WP_CONTENT_DIR . '/' . $path;
-            $current_exists = file_exists($full_path);
-            $current = $current_exists ? file_get_contents($full_path) : '';
+        foreach ($by_path as $path => $changes) {
+            $first_change = $changes[0];
+            $is_binary = $first_change['is_binary'];
 
             if ($is_binary) {
                 $diff_output[] = "diff --git a/$path b/$path";
@@ -197,14 +251,43 @@ class Change_Tracker {
                 continue;
             }
 
-            if ($change['content_truncated']) {
-                $diff_output[] = "diff --git a/$path b/$path";
-                $diff_output[] = "--- File too large for complete diff (original: {$change['original_size']} bytes) ---";
-                $diff_output[] = "";
-                continue;
-            }
+            if ($show_individual_patches && count($changes) > 1) {
+                // Show each patch individually
+                $patches = $this->get_file_patches($path);
+                foreach ($patches as $i => $patch) {
+                    $patch_num = $i + 1;
+                    $total = count($patches);
+                    $diff_output[] = "# Patch $patch_num/$total for $path ({$patch['date']})";
+                    $diff_output[] = $this->generate_unified_diff(
+                        $path,
+                        $patch['before'],
+                        $patch['after'],
+                        $patch['change_type']
+                    );
+                }
+            } else {
+                // Merged diff: first original → current file
+                $original = $first_change['original_content'];
+                $change_type = $first_change['change_type'];
 
-            $diff_output[] = $this->generate_unified_diff($path, $original, $current, $change_type);
+                // Check if file was ultimately deleted
+                $last_change = end($changes);
+                if ($last_change['change_type'] === 'deleted') {
+                    $change_type = 'deleted';
+                }
+
+                if ($first_change['content_truncated']) {
+                    $diff_output[] = "diff --git a/$path b/$path";
+                    $diff_output[] = "--- File too large for complete diff (original: {$first_change['original_size']} bytes) ---";
+                    $diff_output[] = "";
+                    continue;
+                }
+
+                $full_path = WP_CONTENT_DIR . '/' . $path;
+                $current = file_exists($full_path) ? file_get_contents($full_path) : '';
+
+                $diff_output[] = $this->generate_unified_diff($path, $original, $current, $change_type);
+            }
         }
 
         return implode("\n", $diff_output);
@@ -394,14 +477,14 @@ class Change_Tracker {
         return strpos($content, "\0") !== false;
     }
 
-    private function get_existing_change_for_path(string $path): ?\WP_Post {
-        $posts = get_posts([
+    private function get_changes_for_path(string $path): array {
+        return get_posts([
             'post_type' => self::POST_TYPE,
             'title' => $path,
-            'posts_per_page' => 1,
+            'posts_per_page' => -1,
             'post_status' => 'publish',
+            'orderby' => 'date',
+            'order' => 'DESC',
         ]);
-
-        return !empty($posts) ? $posts[0] : null;
     }
 }

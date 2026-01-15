@@ -164,6 +164,15 @@
     color: #383d41;
 }
 
+.ai-changes-patches {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 500;
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
 .ai-changes-binary {
     font-size: 11px;
     padding: 2px 6px;
