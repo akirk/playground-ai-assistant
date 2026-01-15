@@ -579,6 +579,38 @@
             }
         },
 
+        readSSEStream: async function*(response) {
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder();
+            var buffer = '';
+
+            try {
+                while (true) {
+                    var { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    var lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i].trim();
+                        if (line.startsWith('data: ')) {
+                            var data = line.slice(6);
+                            if (data === '[DONE]') return;
+                            try {
+                                yield JSON.parse(data);
+                            } catch (e) {
+                                // Skip non-JSON data lines
+                            }
+                        }
+                    }
+                }
+            } finally {
+                reader.releaseLock();
+            }
+        },
+
         callAnthropic: async function() {
             var self = this;
             var config = aiAssistantConfig;
@@ -596,6 +628,7 @@
                     body: JSON.stringify({
                         model: model,
                         max_tokens: 4096,
+                        stream: true,
                         system: this.systemPrompt,
                         messages: this.messages,
                         tools: this.getTools()
@@ -607,25 +640,50 @@
                     throw new Error(error.error?.message || 'API request failed');
                 }
 
-                var data = await response.json();
-                this.handleAnthropicResponse(data);
+                var $reply = this.startReply();
+                var textContent = '';
+                var contentBlocks = [];
+                var currentBlock = null;
+                var toolCalls = [];
 
-            } catch (error) {
-                this.setLoading(false);
-                this.addMessage('error', 'Anthropic API error: ' + error.message);
-            }
-        },
+                for await (var event of this.readSSEStream(response)) {
+                    switch (event.type) {
+                        case 'content_block_start':
+                            currentBlock = { index: event.index, ...event.content_block };
+                            if (currentBlock.type === 'tool_use') {
+                                currentBlock.input = '';
+                            }
+                            break;
 
-        handleAnthropicResponse: function(data) {
-            var self = this;
-            var textContent = '';
-            var toolCalls = [];
+                        case 'content_block_delta':
+                            if (event.delta.type === 'text_delta') {
+                                textContent += event.delta.text;
+                                this.updateReply($reply, textContent);
+                            } else if (event.delta.type === 'input_json_delta') {
+                                if (currentBlock) {
+                                    currentBlock.input += event.delta.partial_json;
+                                }
+                            }
+                            break;
 
-            if (data.content) {
-                data.content.forEach(function(block) {
-                    if (block.type === 'text') {
-                        textContent += block.text;
-                    } else if (block.type === 'tool_use') {
+                        case 'content_block_stop':
+                            if (currentBlock) {
+                                if (currentBlock.type === 'tool_use') {
+                                    try {
+                                        currentBlock.input = JSON.parse(currentBlock.input);
+                                    } catch (e) {
+                                        currentBlock.input = {};
+                                    }
+                                }
+                                contentBlocks.push(currentBlock);
+                                currentBlock = null;
+                            }
+                            break;
+                    }
+                }
+
+                contentBlocks.forEach(function(block) {
+                    if (block.type === 'tool_use') {
                         toolCalls.push({
                             id: block.id,
                             name: block.name,
@@ -633,21 +691,24 @@
                         });
                     }
                 });
-            }
 
-            if (textContent) {
-                this.addMessage('assistant', textContent);
-            }
+                if (!textContent) {
+                    $reply.remove();
+                }
 
-            // Add assistant message to history
-            this.messages.push({ role: 'assistant', content: data.content });
-            this.updateTokenCount();
+                this.messages.push({ role: 'assistant', content: contentBlocks });
+                this.updateTokenCount();
 
-            if (toolCalls.length > 0) {
-                this.processToolCalls(toolCalls, 'anthropic');
-            } else {
+                if (toolCalls.length > 0) {
+                    this.processToolCalls(toolCalls, 'anthropic');
+                } else {
+                    this.setLoading(false);
+                    this.autoSaveConversation();
+                }
+
+            } catch (error) {
                 this.setLoading(false);
-                this.autoSaveConversation();
+                this.addMessage('error', 'Anthropic API error: ' + error.message);
             }
         },
 
@@ -671,6 +732,7 @@
                     body: JSON.stringify({
                         model: model,
                         max_tokens: 4096,
+                        stream: true,
                         messages: requestMessages,
                         tools: this.getToolsOpenAI()
                     })
@@ -681,53 +743,65 @@
                     throw new Error(error.error?.message || 'API request failed');
                 }
 
-                var data = await response.json();
-                this.handleOpenAIResponse(data);
+                var $reply = this.startReply();
+                var textContent = '';
+                var toolCallsMap = {};
+
+                for await (var chunk of this.readSSEStream(response)) {
+                    var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
+                    if (!delta) continue;
+
+                    if (delta.content) {
+                        textContent += delta.content;
+                        this.updateReply($reply, textContent);
+                    }
+
+                    if (delta.tool_calls) {
+                        delta.tool_calls.forEach(function(tc) {
+                            var idx = tc.index;
+                            if (!toolCallsMap[idx]) {
+                                toolCallsMap[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                            }
+                            if (tc.id) toolCallsMap[idx].id = tc.id;
+                            if (tc.function) {
+                                if (tc.function.name) toolCallsMap[idx].function.name = tc.function.name;
+                                if (tc.function.arguments) toolCallsMap[idx].function.arguments += tc.function.arguments;
+                            }
+                        });
+                    }
+                }
+
+                var toolCalls = [];
+                Object.keys(toolCallsMap).forEach(function(idx) {
+                    var tc = toolCallsMap[idx];
+                    toolCalls.push({
+                        id: tc.id,
+                        name: tc.function.name,
+                        arguments: JSON.parse(tc.function.arguments || '{}')
+                    });
+                });
+
+                if (!textContent) {
+                    $reply.remove();
+                }
+
+                var message = { role: 'assistant', content: textContent || null };
+                if (Object.keys(toolCallsMap).length > 0) {
+                    message.tool_calls = Object.values(toolCallsMap);
+                }
+                this.messages.push(message);
+                this.updateTokenCount();
+
+                if (toolCalls.length > 0) {
+                    this.processToolCalls(toolCalls, 'openai');
+                } else {
+                    this.setLoading(false);
+                    this.autoSaveConversation();
+                }
 
             } catch (error) {
                 this.setLoading(false);
                 this.addMessage('error', 'OpenAI API error: ' + error.message);
-            }
-        },
-
-        handleOpenAIResponse: function(data) {
-            var choice = data.choices && data.choices[0];
-            if (!choice) {
-                this.setLoading(false);
-                var provider = aiAssistantConfig.provider === 'openai' ? 'OpenAI' : 'LLM';
-                this.addMessage('error', 'No response from ' + provider);
-                return;
-            }
-
-            var message = choice.message;
-            var textContent = message.content || '';
-            var toolCalls = [];
-
-            if (message.tool_calls) {
-                message.tool_calls.forEach(function(tc) {
-                    if (tc.type === 'function') {
-                        toolCalls.push({
-                            id: tc.id,
-                            name: tc.function.name,
-                            arguments: JSON.parse(tc.function.arguments || '{}')
-                        });
-                    }
-                });
-            }
-
-            if (textContent) {
-                this.addMessage('assistant', textContent);
-            }
-
-            // Add to message history
-            this.messages.push(message);
-            this.updateTokenCount();
-
-            if (toolCalls.length > 0) {
-                this.processToolCalls(toolCalls, 'openai');
-            } else {
-                this.setLoading(false);
-                this.autoSaveConversation();
             }
         },
 
@@ -737,13 +811,13 @@
             var endpoint = (config.localEndpoint || 'http://localhost:11434').replace(/\/$/, '');
 
             try {
-                // Try OpenAI-compatible endpoint first (works with LM Studio and Ollama)
                 var requestMessages = [
                     { role: 'system', content: this.systemPrompt },
                     ...this.messages
                 ];
 
                 var model = this.conversationModel || config.model;
+                var useOllamaApi = false;
 
                 var response = await fetch(endpoint + '/v1/chat/completions', {
                     method: 'POST',
@@ -752,13 +826,14 @@
                     },
                     body: JSON.stringify({
                         model: model,
+                        stream: true,
                         messages: requestMessages,
                         tools: this.getToolsOpenAI()
                     })
                 });
 
                 if (!response.ok) {
-                    // Try Ollama native API
+                    useOllamaApi = true;
                     response = await fetch(endpoint + '/api/chat', {
                         method: 'POST',
                         headers: {
@@ -768,7 +843,7 @@
                             model: model,
                             messages: requestMessages,
                             tools: this.getToolsOpenAI(),
-                            stream: false
+                            stream: true
                         })
                     });
                 }
@@ -777,22 +852,111 @@
                     throw new Error('Local LLM request failed. Make sure Ollama or LM Studio is running.');
                 }
 
-                var data = await response.json();
+                var $reply = this.startReply();
+                var textContent = '';
+                var toolCallsMap = {};
 
-                // Handle Ollama native response format
-                if (data.message) {
-                    data = {
-                        choices: [{
-                            message: data.message
-                        }]
-                    };
+                if (useOllamaApi) {
+                    for await (var chunk of this.readOllamaStream(response)) {
+                        if (chunk.message && chunk.message.content) {
+                            textContent += chunk.message.content;
+                            this.updateReply($reply, textContent);
+                        }
+                        if (chunk.message && chunk.message.tool_calls) {
+                            chunk.message.tool_calls.forEach(function(tc, idx) {
+                                toolCallsMap[idx] = tc;
+                            });
+                        }
+                    }
+                } else {
+                    for await (var chunk of this.readSSEStream(response)) {
+                        var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
+                        if (!delta) continue;
+
+                        if (delta.content) {
+                            textContent += delta.content;
+                            this.updateReply($reply, textContent);
+                        }
+
+                        if (delta.tool_calls) {
+                            delta.tool_calls.forEach(function(tc) {
+                                var idx = tc.index;
+                                if (!toolCallsMap[idx]) {
+                                    toolCallsMap[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                }
+                                if (tc.id) toolCallsMap[idx].id = tc.id;
+                                if (tc.function) {
+                                    if (tc.function.name) toolCallsMap[idx].function.name = tc.function.name;
+                                    if (tc.function.arguments) toolCallsMap[idx].function.arguments += tc.function.arguments;
+                                }
+                            });
+                        }
+                    }
                 }
 
-                this.handleOpenAIResponse(data);
+                var toolCalls = [];
+                Object.keys(toolCallsMap).forEach(function(idx) {
+                    var tc = toolCallsMap[idx];
+                    if (tc.function) {
+                        toolCalls.push({
+                            id: tc.id || 'tool_' + idx,
+                            name: tc.function.name,
+                            arguments: JSON.parse(tc.function.arguments || '{}')
+                        });
+                    }
+                });
+
+                if (!textContent) {
+                    $reply.remove();
+                }
+
+                var message = { role: 'assistant', content: textContent || null };
+                if (Object.keys(toolCallsMap).length > 0) {
+                    message.tool_calls = Object.values(toolCallsMap);
+                }
+                this.messages.push(message);
+                this.updateTokenCount();
+
+                if (toolCalls.length > 0) {
+                    this.processToolCalls(toolCalls, 'openai');
+                } else {
+                    this.setLoading(false);
+                    this.autoSaveConversation();
+                }
 
             } catch (error) {
                 this.setLoading(false);
                 this.addMessage('error', 'Local LLM error: ' + error.message);
+            }
+        },
+
+        readOllamaStream: async function*(response) {
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder();
+            var buffer = '';
+
+            try {
+                while (true) {
+                    var { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    var lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i].trim();
+                        if (line) {
+                            try {
+                                yield JSON.parse(line);
+                            } catch (e) {
+                                // Skip non-JSON lines
+                            }
+                        }
+                    }
+                }
+            } finally {
+                reader.releaseLock();
             }
         },
 
@@ -1211,6 +1375,22 @@
                 '</div>');
 
             $messages.append($message);
+            this.scrollToBottom();
+        },
+
+        startReply: function() {
+            var $messages = $('#ai-assistant-messages');
+            var $message = $('<div class="ai-message ai-message-assistant">' +
+                '<div class="ai-message-content"></div>' +
+                '</div>');
+            $messages.append($message);
+            this.scrollToBottom();
+            return $message;
+        },
+
+        updateReply: function($message, text) {
+            var $content = $message.find('.ai-message-content');
+            $content.html(this.formatContent(text));
             this.scrollToBottom();
         },
 
