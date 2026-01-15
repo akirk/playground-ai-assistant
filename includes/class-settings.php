@@ -1368,70 +1368,84 @@ class Settings {
 
         $nonce = wp_create_nonce('ai_assistant_skills');
 
-        $html = '<p>' . __('Skills are specialized knowledge documents the AI can load on-demand. Click a skill to view its content:', 'ai-assistant') . '</p>';
+        $html = '<style>
+            .ai-skill-accordion { margin: 0; padding: 0; list-style: none; }
+            .ai-skill-item { border: 1px solid #ddd; margin-bottom: -1px; }
+            .ai-skill-header { display: block; padding: 10px 12px; background: #f9f9f9; cursor: pointer; text-decoration: none; color: inherit; }
+            .ai-skill-header:hover { background: #f0f0f0; }
+            .ai-skill-header:focus { outline: 2px solid #2271b1; outline-offset: -2px; }
+            .ai-skill-header .dashicons { float: right; color: #666; transition: transform 0.2s; }
+            .ai-skill-item.open .ai-skill-header .dashicons { transform: rotate(180deg); }
+            .ai-skill-header code { background: #e0e0e0; padding: 2px 6px; border-radius: 3px; }
+            .ai-skill-header .ai-skill-title { margin-left: 8px; color: #333; }
+            .ai-skill-body { display: none; padding: 12px; background: #fff; border-top: 1px solid #ddd; }
+            .ai-skill-body pre { white-space: pre-wrap; margin: 0; max-height: 300px; overflow-y: auto; font-size: 12px; line-height: 1.5; }
+            .ai-skill-body .loading { color: #666; font-style: italic; }
+            .ai-skill-desc { display: block; font-size: 12px; color: #666; margin-top: 4px; }
+        </style>';
+
+        $html .= '<p>' . __('Skills are specialized knowledge documents the AI can load on-demand. Click a skill to view its content:', 'ai-assistant') . '</p>';
 
         foreach ($skills_by_category as $category => $skills) {
             $html .= '<h4 style="margin: 1em 0 0.5em; text-transform: capitalize;">' . esc_html($category) . '</h4>';
-            $html .= '<ul style="margin-top: 0;">';
+            $html .= '<ul class="ai-skill-accordion">';
             foreach ($skills as $skill) {
-                $html .= '<li>';
-                $html .= '<a href="#" class="ai-skill-link" data-skill="' . esc_attr($skill['id']) . '">';
+                $html .= '<li class="ai-skill-item" data-skill="' . esc_attr($skill['id']) . '">';
+                $html .= '<a href="#" class="ai-skill-header">';
+                $html .= '<span class="dashicons dashicons-arrow-down-alt2"></span>';
                 $html .= '<code>' . esc_html($skill['id']) . '</code>';
                 if ($skill['title'] !== $skill['id']) {
-                    $html .= ' - ' . esc_html($skill['title']);
+                    $html .= '<span class="ai-skill-title">' . esc_html($skill['title']) . '</span>';
+                }
+                if ($skill['description']) {
+                    $html .= '<span class="ai-skill-desc">' . esc_html($skill['description']) . '</span>';
                 }
                 $html .= '</a>';
-                if ($skill['description']) {
-                    $html .= '<br><em>' . esc_html($skill['description']) . '</em>';
-                }
+                $html .= '<div class="ai-skill-body"><pre class="loading">Click to load...</pre></div>';
                 $html .= '</li>';
             }
             $html .= '</ul>';
         }
 
-        $html .= '<div id="ai-skill-content" style="display:none; margin-top: 1em; padding: 10px; background: #f6f7f7; border-radius: 4px;">';
-        $html .= '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">';
-        $html .= '<strong id="ai-skill-title"></strong>';
-        $html .= '<a href="#" id="ai-skill-close" style="text-decoration: none;">&times; close</a>';
-        $html .= '</div>';
-        $html .= '<pre id="ai-skill-body" style="white-space: pre-wrap; margin: 0; max-height: 300px; overflow-y: auto;"></pre>';
-        $html .= '</div>';
-
         $html .= '<script>
         jQuery(function($) {
             var nonce = ' . json_encode($nonce) . ';
             var ajaxUrl = ' . json_encode(admin_url('admin-ajax.php')) . ';
+            var loadedSkills = {};
 
-            $(".ai-skill-link").on("click", function(e) {
+            $(".ai-skill-header").on("click", function(e) {
                 e.preventDefault();
-                var skill = $(this).data("skill");
-                var $content = $("#ai-skill-content");
-                var $body = $("#ai-skill-body");
-                var $title = $("#ai-skill-title");
+                var $item = $(this).closest(".ai-skill-item");
+                var $body = $item.find(".ai-skill-body");
+                var $pre = $body.find("pre");
+                var skill = $item.data("skill");
+                var isOpen = $item.hasClass("open");
 
-                $body.text("Loading...");
-                $title.text("");
-                $content.show();
+                if (isOpen) {
+                    $body.slideUp(150);
+                    $item.removeClass("open");
+                } else {
+                    $body.slideDown(150);
+                    $item.addClass("open");
 
-                $.post(ajaxUrl, {
-                    action: "ai_assistant_get_skill",
-                    skill: skill,
-                    _wpnonce: nonce
-                }, function(response) {
-                    if (response.success) {
-                        $title.text(response.data.title);
-                        $body.text(response.data.content);
-                    } else {
-                        $body.text("Error: " + response.data.message);
+                    if (!loadedSkills[skill]) {
+                        $pre.addClass("loading").text("Loading...");
+                        $.post(ajaxUrl, {
+                            action: "ai_assistant_get_skill",
+                            skill: skill,
+                            _wpnonce: nonce
+                        }, function(response) {
+                            if (response.success) {
+                                $pre.removeClass("loading").text(response.data.content);
+                                loadedSkills[skill] = true;
+                            } else {
+                                $pre.removeClass("loading").text("Error: " + response.data.message);
+                            }
+                        }).fail(function() {
+                            $pre.removeClass("loading").text("Failed to load skill");
+                        });
                     }
-                }).fail(function() {
-                    $body.text("Failed to load skill");
-                });
-            });
-
-            $("#ai-skill-close").on("click", function(e) {
-                e.preventDefault();
-                $("#ai-skill-content").hide();
+                }
             });
         });
         </script>';
