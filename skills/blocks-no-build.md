@@ -8,50 +8,6 @@ category: blocks
 
 You can create WordPress blocks without JSX or a build process by using `wp.element.createElement` directly.
 
-## Common Mistakes to Avoid
-
-### Mistake 1: Using ES6/JSX (requires build step)
-
-```javascript
-// WRONG: ES6 imports don't work in browsers
-import { registerBlockType } from '@wordpress/blocks';
-import { useBlockProps } from '@wordpress/block-editor';
-
-// WRONG: JSX syntax requires compilation
-return <div className="my-block"><p>Hello</p></div>;
-
-// WRONG: Importing but never calling registerBlockType
-import { registerBlockType } from '@wordpress/blocks';
-// ... edit and save functions defined but block never registered
-```
-
-**Why this fails:** Browsers cannot execute ES6 `import` statements or JSX syntax directly. These require transpilation via Babel/webpack.
-
-### Mistake 2: Expecting edit() interactivity on frontend
-
-```javascript
-// WRONG: Thinking button clicks in edit() work for site visitors
-edit: function( props ) {
-    return el( 'button', {
-        onClick: function() { alert('clicked!'); }  // Only works in editor!
-    }, 'Click me' );
-},
-save: function( props ) {
-    return el( 'button', {}, 'Click me' );  // Static HTML, no click handler
-}
-```
-
-**Why this fails:**
-
-| Context | What Runs | Interactive? |
-|---------|-----------|--------------|
-| Editor (admin) | `edit()` function | Yes - React components with handlers |
-| Frontend (visitors) | `save()` output only | No - just static HTML in database |
-
-The `save()` function outputs static HTML that gets stored in the database. Event handlers, state, and any JavaScript logic in `edit()` do NOT carry over to the frontend.
-
-**If your block needs frontend interactivity (buttons, animations, dynamic content), you MUST add a view_script.** See "Frontend Interactivity" section below.
-
 ## Correct No-Build Pattern
 
 Use the global `wp` object and `createElement`:
@@ -105,6 +61,98 @@ function my_register_block() {
 }
 add_action( 'init', 'my_register_block' );
 ```
+
+## Creating a Sample Post with the Block
+
+Block markup in post content follows this format:
+
+```
+<!-- wp:namespace/block-name {"attr":"value"} -->
+<HTML from save()>
+<!-- /wp:namespace/block-name -->
+```
+
+### Block with No Attributes
+
+```php
+// Dynamic block (save returns null) - self-closing allowed
+$content = '<!-- wp:my-plugin/my-block /-->';
+
+// Static block - must include HTML from save()
+$content = '<!-- wp:my-plugin/my-block -->
+<div class="wp-block-my-plugin-my-block"><p>Default content</p></div>
+<!-- /wp:my-plugin/my-block -->';
+```
+
+### Block with Attributes
+
+The JSON attributes in the comment **must match** the HTML output from `save()`. If they don't match, WordPress shows a "resolve block" recovery prompt.
+
+```php
+// WRONG - attribute says "Hello" but HTML says "World"
+$content = '<!-- wp:my-plugin/my-block {"content":"Hello"} -->
+<div class="wp-block-my-plugin-my-block"><p>World</p></div>
+<!-- /wp:my-plugin/my-block -->';
+
+// CORRECT - attribute and HTML are in sync
+$content = '<!-- wp:my-plugin/my-block {"content":"Hello"} -->
+<div class="wp-block-my-plugin-my-block"><p>Hello</p></div>
+<!-- /wp:my-plugin/my-block -->';
+```
+
+Use in `wp_insert_post`:
+
+```php
+wp_insert_post( array(
+    'post_title'   => 'Block Demo',
+    'post_content' => $content,
+    'post_status'  => 'draft',
+) );
+```
+
+## Common Mistakes to Avoid
+
+### Mistake 1: Using ES6/JSX (requires build step)
+
+```javascript
+// WRONG: ES6 imports don't work in browsers
+import { registerBlockType } from '@wordpress/blocks';
+import { useBlockProps } from '@wordpress/block-editor';
+
+// WRONG: JSX syntax requires compilation
+return <div className="my-block"><p>Hello</p></div>;
+
+// WRONG: Importing but never calling registerBlockType
+import { registerBlockType } from '@wordpress/blocks';
+// ... edit and save functions defined but block never registered
+```
+
+**Why this fails:** Browsers cannot execute ES6 `import` statements or JSX syntax directly. These require transpilation via Babel/webpack.
+
+### Mistake 2: Expecting edit() interactivity on frontend
+
+```javascript
+// WRONG: Thinking button clicks in edit() work for site visitors
+edit: function( props ) {
+    return el( 'button', {
+        onClick: function() { alert('clicked!'); }  // Only works in editor!
+    }, 'Click me' );
+},
+save: function( props ) {
+    return el( 'button', {}, 'Click me' );  // Static HTML, no click handler
+}
+```
+
+**Why this fails:**
+
+| Context | What Runs | Interactive? |
+|---------|-----------|--------------|
+| Editor (admin) | `edit()` function | Yes - React components with handlers |
+| Frontend (visitors) | `save()` output only | No - just static HTML in database |
+
+The `save()` function outputs static HTML that gets stored in the database. Event handlers, state, and any JavaScript logic in `edit()` do NOT carry over to the frontend.
+
+**If your block needs frontend interactivity (buttons, animations, dynamic content), you MUST add a view_script.** See "Frontend Interactivity" section below.
 
 ## Frontend Interactivity
 
