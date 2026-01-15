@@ -455,7 +455,8 @@
                 '2. Key decisions or outcomes\n' +
                 '3. Files created or modified (if any)\n' +
                 '4. Important context for continuing this work later\n\n' +
-                'Keep the summary under 500 words. Focus on information that would help someone resume this conversation.\n\n' +
+                'Keep the summary under 500 words. Focus on information that would help someone resume this conversation.\n' +
+                'Do NOT include a title or "Conversation Summary" heading - just start with the content.\n\n' +
                 'Conversation:\n' + convData.messages_text;
 
             if (provider === 'anthropic') {

@@ -112,7 +112,13 @@
             // Links
             content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 
-            // Line breaks
+            // Headings (must be before line breaks)
+            content = content.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+            content = content.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+            content = content.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+
+            // Line breaks (skip after block elements)
+            content = content.replace(/(<\/h[234]>)\n/g, '$1');
             content = content.replace(/\n/g, '<br>');
 
             return content;
