@@ -53,14 +53,7 @@ spl_autoload_register(function ($class) {
     }
 
     $relative_class = substr($class, $len);
-
-    // Handle provider classes
-    if (strpos($relative_class, 'Providers\\') === 0) {
-        $relative_class = substr($relative_class, 10); // Remove 'Providers\'
-        $file = $base_dir . 'providers/class-' . strtolower(str_replace('_', '-', $relative_class)) . '.php';
-    } else {
-        $file = $base_dir . 'class-' . strtolower(str_replace('_', '-', $relative_class)) . '.php';
-    }
+    $file = $base_dir . 'class-' . strtolower(str_replace('_', '-', $relative_class)) . '.php';
 
     if (file_exists($file)) {
         require $file;
@@ -112,7 +105,7 @@ final class AI_Assistant {
         $this->executor = new AI_Assistant\Executor($this->tools, $this->change_tracker);
         $this->conversations = new AI_Assistant\Conversations();
         $this->chat_ui = new AI_Assistant\Chat_UI();
-        $this->api_handler = new AI_Assistant\API_Handler($this->get_provider(), $this->tools, $this->executor);
+        $this->api_handler = new AI_Assistant\API_Handler($this->tools, $this->executor);
         $this->plugin_downloads = new AI_Assistant\Plugin_Downloads();
         $this->changes_admin = new AI_Assistant\Changes_Admin($this->change_tracker);
     }
@@ -122,23 +115,6 @@ final class AI_Assistant {
      */
     public function conversations() {
         return $this->conversations;
-    }
-
-    /**
-     * Get the configured LLM provider
-     */
-    public function get_provider() {
-        $provider_type = get_option('ai_assistant_provider', 'anthropic');
-
-        switch ($provider_type) {
-            case 'openai':
-                return new AI_Assistant\Providers\OpenAI();
-            case 'local':
-                return new AI_Assistant\Providers\Local_LLM();
-            case 'anthropic':
-            default:
-                return new AI_Assistant\Providers\Anthropic();
-        }
     }
 
     /**

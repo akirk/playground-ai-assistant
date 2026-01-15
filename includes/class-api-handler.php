@@ -16,7 +16,7 @@ class API_Handler {
     private $tools;
     private $executor;
 
-    public function __construct($provider, $tools, $executor) {
+    public function __construct($tools, $executor) {
         $this->tools = $tools;
         $this->executor = $executor;
 
