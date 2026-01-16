@@ -641,7 +641,7 @@
 
             if (!userContent) return;
 
-            var titlePrompt = 'Generate a very short title (3-6 words max) for a conversation that starts with this message. Return ONLY the title, nothing else:\n\n' + userContent.substring(0, 500);
+            var titlePrompt = 'Generate a very short title (3-6 words max) for a conversation that starts with this message. Return ONLY the title, nothing else. Do not explain or reason - just output the title directly.\n\n' + userContent.substring(0, 500);
 
             if (config.provider === 'anthropic' && config.apiKey) {
                 fetch('https://api.anthropic.com/v1/messages', {
@@ -704,14 +704,15 @@
                     },
                     body: JSON.stringify({
                         model: model,
-                        max_tokens: 30,
+                        max_tokens: 150,
                         messages: [{ role: 'user', content: titlePrompt }]
                     })
                 })
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     if (data.choices && data.choices[0] && data.choices[0].message) {
-                        self.conversationTitle = data.choices[0].message.content.trim().replace(/^["']|["']$/g, '');
+                        var title = self.stripReasoningTokens(data.choices[0].message.content);
+                        self.conversationTitle = title.trim().replace(/^["']|["']$/g, '');
                         self.saveConversation(true);
                         self.loadSidebarConversations();
                     }

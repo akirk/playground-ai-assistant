@@ -379,6 +379,10 @@
 
                 if (useOllamaApi) {
                     for await (var chunk of this.readOllamaStream(response)) {
+                        // Check for error events
+                        if (chunk.error) {
+                            throw new Error(chunk.error.message || chunk.error || 'Unknown error from Ollama');
+                        }
                         if (chunk.message && chunk.message.content) {
                             textContent += chunk.message.content;
                             this.updateReply($reply, textContent);
@@ -391,6 +395,11 @@
                     }
                 } else {
                     for await (var chunk of this.readSSEStream(response)) {
+                        // Check for error events from LM Studio/Ollama
+                        if (chunk.error) {
+                            throw new Error(chunk.error.message || chunk.message || 'Unknown error from local LLM');
+                        }
+
                         var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
                         if (!delta) continue;
 
@@ -427,13 +436,20 @@
                     }
                 });
 
-                if (!textContent) {
+                // Strip reasoning tokens from the final response
+                var strippedContent = this.stripReasoningTokens(textContent);
+
+                if (!strippedContent) {
                     $reply.remove();
                 } else {
+                    // Update display with stripped content if different
+                    if (strippedContent !== textContent) {
+                        this.updateReply($reply, strippedContent);
+                    }
                     this.finalizeReply($reply);
                 }
 
-                var message = { role: 'assistant', content: textContent || null };
+                var message = { role: 'assistant', content: strippedContent || null };
                 if (Object.keys(toolCallsMap).length > 0) {
                     message.tool_calls = Object.values(toolCallsMap);
                 }
@@ -448,6 +464,7 @@
                 }
 
             } catch (error) {
+                if ($reply) $reply.remove();
                 this.setLoading(false);
                 this.addMessage('error', 'Local LLM error: ' + error.message);
             }
@@ -533,6 +550,7 @@
         },
 
         callLocalForSummary: function(model, prompt) {
+            var self = this;
             var endpoint = aiAssistantConfig.localEndpoint || 'http://localhost:11434';
             endpoint = endpoint.replace(/\/$/, '');
 
@@ -549,7 +567,7 @@
                     return response.json();
                 }).then(function(data) {
                     if (data.choices && data.choices[0] && data.choices[0].message) {
-                        resolve(data.choices[0].message.content);
+                        resolve(self.stripReasoningTokens(data.choices[0].message.content));
                     } else {
                         reject(new Error('Invalid response from local LLM'));
                     }
@@ -566,7 +584,7 @@
                         return response.json();
                     }).then(function(data) {
                         if (data.response) {
-                            resolve(data.response);
+                            resolve(self.stripReasoningTokens(data.response));
                         } else {
                             reject(new Error('Invalid response from Ollama'));
                         }

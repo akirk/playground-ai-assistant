@@ -410,6 +410,19 @@
             return div.innerHTML;
         },
 
+        stripReasoningTokens: function(text) {
+            if (!text) return text;
+            // Strip [THINK]...[/THINK] blocks (Ministral and similar reasoning models)
+            var stripped = text.replace(/\[THINK\][\s\S]*?\[\/THINK\]/gi, '');
+            // Strip <think>...</think> blocks (DeepSeek and similar)
+            stripped = stripped.replace(/<think>[\s\S]*?<\/think>/gi, '');
+            // Strip incomplete [THINK]... at the start (truncated response)
+            stripped = stripped.replace(/^\s*\[THINK\][\s\S]*$/gi, '');
+            // Strip incomplete <think>... at the start (truncated response)
+            stripped = stripped.replace(/^\s*<think>[\s\S]*$/gi, '');
+            return stripped.trim();
+        },
+
         setupAjaxErrorTracking: function() {
             var self = this;
 
