@@ -110,7 +110,7 @@ class Git_Tracker {
             'relative_path' => substr($path, strlen($dir) + 1),
             'change_type' => $change_type,
             'sha' => $info['sha'] ?? null,
-            'is_reverted' => $this->get_stashed_content($path) !== null,
+            'is_reverted' => $this->is_reverted($path),
         ];
         $directories[$dir]['count']++;
     }
@@ -455,6 +455,8 @@ class Git_Tracker {
         $offset = 12;
 
         for ($i = 0; $i < $header['entries']; $i++) {
+            $entry_start = $offset;
+
             if ($offset + 62 > strlen($data)) {
                 break;
             }
@@ -472,19 +474,26 @@ class Git_Tracker {
             $name_len = $flags & 0x0FFF;
             $offset += 2;
 
+            // Read name - find NUL terminator for safety
             $name = substr($data, $offset, $name_len);
-            $offset += $name_len;
+            $nul_pos = strpos($name, "\0");
+            if ($nul_pos !== false) {
+                $name = substr($name, 0, $nul_pos);
+            }
 
-            // Padding
-            $entry_len = 62 + $name_len;
-            $padding = (8 - ($entry_len % 8)) % 8;
-            $offset += $padding;
+            // Calculate padding: entry padded to multiple of 8 bytes
+            // Entry = 62 bytes (fixed) + name length + 1 (NUL) + padding
+            $entry_len = 62 + strlen($name) + 1;
+            $padded_len = (int)(ceil($entry_len / 8) * 8);
+            $offset = $entry_start + $padded_len;
 
-            $entries[$name] = [
-                'sha' => $sha,
-                'size' => $meta['size'],
-                'mode' => $meta['mode'],
-            ];
+            if (!empty($name)) {
+                $entries[$name] = [
+                    'sha' => $sha,
+                    'size' => $meta['size'],
+                    'mode' => $meta['mode'],
+                ];
+            }
         }
 
         return $entries;
@@ -510,12 +519,14 @@ class Git_Tracker {
             $body .= pack('N', $info['size']);
             // SHA (20 bytes)
             $body .= hex2bin($info['sha']);
-            // flags (2 bytes)
+            // flags (2 bytes) - name length capped at 0xFFF
             $body .= pack('n', min(strlen($path), 0x0FFF));
-            // name + padding
-            $body .= $path;
-            $entry_len = 62 + strlen($path);
-            $body .= str_repeat("\0", (8 - ($entry_len % 8)) % 8);
+            // name + NUL terminator
+            $body .= $path . "\0";
+            // Padding to 8-byte boundary (entry = 62 + name + 1 NUL)
+            $entry_len = 62 + strlen($path) + 1;
+            $padding = (8 - ($entry_len % 8)) % 8;
+            $body .= str_repeat("\0", $padding);
         }
 
         $header = pack('a4NN', 'DIRC', 2, count($entries));
