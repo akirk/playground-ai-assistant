@@ -228,13 +228,13 @@ class Executor {
         $existed = file_exists($full_path);
         $old_content = $existed ? file_get_contents($full_path) : null;
 
-        // Track change in git
-        if ($this->git_tracker) {
-            $this->git_tracker->track_change($path, $existed ? 'modified' : 'created', $old_content, $reason);
-        }
-
         if (file_put_contents($full_path, $content) === false) {
             throw new \Exception("Failed to write file: $path");
+        }
+
+        // Track change in git (after file is written so ai-changes branch captures new content)
+        if ($this->git_tracker) {
+            $this->git_tracker->track_change($path, $existed ? 'modified' : 'created', $old_content, $reason);
         }
 
         // Track if this is a plugin modification
@@ -262,10 +262,6 @@ class Executor {
 
         $original_content = $content;
 
-        // Track change in git
-        if ($this->git_tracker) {
-            $this->git_tracker->track_change($path, 'modified', $original_content, $reason);
-        }
         $applied = [];
         $failed = [];
 
@@ -301,6 +297,12 @@ class Executor {
             if (file_put_contents($full_path, $content) === false) {
                 throw new \Exception("Failed to write file: $path");
             }
+
+            // Track change in git (after file is written so ai-changes branch captures new content)
+            if ($this->git_tracker) {
+                $this->git_tracker->track_change($path, 'modified', $original_content, $reason);
+            }
+
             // Track if this is a plugin modification
             $this->track_plugin_modification($path);
         }
@@ -323,10 +325,10 @@ class Executor {
             throw new \Exception("File not found: $path");
         }
 
-        // Track change in git
-        if ($this->git_tracker && !is_dir($full_path)) {
+        // Capture content before deletion
+        $original_content = null;
+        if (!is_dir($full_path)) {
             $original_content = file_get_contents($full_path);
-            $this->git_tracker->track_change($path, 'deleted', $original_content !== false ? $original_content : null, $reason);
         }
 
         if (is_dir($full_path)) {
@@ -336,6 +338,11 @@ class Executor {
             if (!unlink($full_path)) {
                 throw new \Exception("Failed to delete file: $path");
             }
+        }
+
+        // Track change in git (after file is deleted so ai-changes branch reflects deletion)
+        if ($this->git_tracker && $original_content !== null) {
+            $this->git_tracker->track_change($path, 'deleted', $original_content !== false ? $original_content : null, $reason);
         }
 
         return [
