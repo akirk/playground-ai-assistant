@@ -93,6 +93,12 @@ class Git_Tracker {
     }
 
     private function add_to_directory_list(array &$directories, string $path, string $change_type, array $info): void {
+        // Skip invalid/corrupted paths
+        if (empty($path) || strlen($path) < 3 || strpos($path, "\0") !== false) {
+            error_log("Git_Tracker: Skipping invalid path: " . bin2hex($path));
+            return;
+        }
+
         $parts = explode('/', $path);
         $dir = count($parts) >= 2 ? $parts[0] . '/' . $parts[1] : $parts[0];
 
@@ -500,6 +506,8 @@ class Git_Tracker {
             $padded_len = (int)(ceil($entry_len / 8) * 8);
             $offset = $entry_start + $padded_len;
 
+            error_log("Git_Tracker::read_index - Read entry: '{$name}' (len=" . strlen($name) . ", name_len_from_flags={$name_len}), sha={$sha}");
+
             if (!empty($name)) {
                 $entries[$name] = [
                     'sha' => $sha,
@@ -509,16 +517,21 @@ class Git_Tracker {
             }
         }
 
+        error_log("Git_Tracker::read_index - Total entries: " . count($entries));
         return $entries;
     }
 
     private function write_index(array $entries): void {
         ksort($entries);
 
+        error_log("Git_Tracker::write_index - Writing " . count($entries) . " entries");
+
         $body = '';
         $now = time();
 
         foreach ($entries as $path => $info) {
+            error_log("Git_Tracker::write_index - Entry: '{$path}' (len=" . strlen($path) . "), sha=" . $info['sha']);
+
             // ctime, mtime (16 bytes)
             $body .= pack('NN', $now, 0);
             $body .= pack('NN', $now, 0);
