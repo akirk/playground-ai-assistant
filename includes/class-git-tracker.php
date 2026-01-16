@@ -135,21 +135,34 @@ class Git_Tracker {
         foreach ($file_paths as $path) {
             $full_path = $this->work_tree . '/' . $path;
 
+            error_log("Git_Tracker::generate_diff - Processing: {$path}");
+
             if (in_array($path, $created)) {
                 // New file
                 if (file_exists($full_path)) {
                     $current = file_get_contents($full_path);
                     $output[] = $this->format_diff($path, '', $current, 'created');
+                } else {
+                    error_log("Git_Tracker::generate_diff - Created file not found: {$full_path}");
                 }
             } elseif (isset($entries[$path])) {
                 // Modified or deleted
-                $original = $this->read_blob($entries[$path]['sha']);
+                $sha = $entries[$path]['sha'];
+                error_log("Git_Tracker::generate_diff - Reading blob: {$sha}");
+                $original = $this->read_blob($sha);
+                if ($original === null) {
+                    error_log("Git_Tracker::generate_diff - Blob not found for: {$path} (sha: {$sha})");
+                    continue;
+                }
                 $current = file_exists($full_path) ? file_get_contents($full_path) : '';
                 $type = file_exists($full_path) ? 'modified' : 'deleted';
+                error_log("Git_Tracker::generate_diff - Type: {$type}, original len: " . strlen($original) . ", current len: " . strlen($current));
 
                 if ($original !== $current) {
                     $output[] = $this->format_diff($path, $original, $current, $type);
                 }
+            } else {
+                error_log("Git_Tracker::generate_diff - Path not in entries or created: {$path}");
             }
         }
 
