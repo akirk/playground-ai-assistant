@@ -476,12 +476,13 @@ class Git_Tracker {
         for ($i = 0; $i < $header['entries']; $i++) {
             $entry_start = $offset;
 
+            // Fixed portion: 24 (ctime/mtime/dev/ino) + 16 (mode/uid/gid/size) + 20 (sha) + 2 (flags) = 62 bytes
             if ($offset + 62 > strlen($data)) {
                 break;
             }
 
-            // Skip ctime, mtime, dev, ino (32 bytes)
-            $offset += 32;
+            // Skip ctime (8), mtime (8), dev (4), ino (4) = 24 bytes
+            $offset += 24;
 
             $meta = unpack('Nmode/Nuid/Ngid/Nsize', substr($data, $offset, 16));
             $offset += 16;
