@@ -25,7 +25,7 @@ class Git_Tracker {
     /**
      * Track a file change by storing the original in git format.
      */
-    public function track_change(string $path, string $change_type, ?string $original_content = null): bool {
+    public function track_change(string $path, string $change_type, ?string $original_content = null, string $reason = ''): bool {
         // Convert absolute path to relative
         $relative_path = $this->to_relative_path($path);
         if (!$relative_path) {
@@ -43,7 +43,7 @@ class Git_Tracker {
                 $this->add_created_file($relative_path);
             }
             // Update ai-changes branch with current file content
-            $this->update_ai_changes_branch();
+            $this->update_ai_changes_branch($relative_path, $reason);
             return true;
         }
 
@@ -58,7 +58,7 @@ class Git_Tracker {
         }
 
         // Update ai-changes branch with current file content
-        $this->update_ai_changes_branch();
+        $this->update_ai_changes_branch($relative_path, $reason);
 
         return true;
     }
@@ -95,7 +95,6 @@ class Git_Tracker {
     private function add_to_directory_list(array &$directories, string $path, string $change_type, array $info): void {
         // Skip invalid/corrupted paths
         if (empty($path) || strlen($path) < 3 || strpos($path, "\0") !== false) {
-            error_log("Git_Tracker: Skipping invalid path: " . bin2hex($path));
             return;
         }
 
@@ -141,34 +140,25 @@ class Git_Tracker {
         foreach ($file_paths as $path) {
             $full_path = $this->work_tree . '/' . $path;
 
-            error_log("Git_Tracker::generate_diff - Processing: {$path}");
-
             if (in_array($path, $created)) {
                 // New file
                 if (file_exists($full_path)) {
                     $current = file_get_contents($full_path);
                     $output[] = $this->format_diff($path, '', $current, 'created');
-                } else {
-                    error_log("Git_Tracker::generate_diff - Created file not found: {$full_path}");
                 }
             } elseif (isset($entries[$path])) {
                 // Modified or deleted
                 $sha = $entries[$path]['sha'];
-                error_log("Git_Tracker::generate_diff - Reading blob: {$sha}");
                 $original = $this->read_blob($sha);
                 if ($original === null) {
-                    error_log("Git_Tracker::generate_diff - Blob not found for: {$path} (sha: {$sha})");
                     continue;
                 }
                 $current = file_exists($full_path) ? file_get_contents($full_path) : '';
                 $type = file_exists($full_path) ? 'modified' : 'deleted';
-                error_log("Git_Tracker::generate_diff - Type: {$type}, original len: " . strlen($original) . ", current len: " . strlen($current));
 
                 if ($original !== $current) {
                     $output[] = $this->format_diff($path, $original, $current, $type);
                 }
-            } else {
-                error_log("Git_Tracker::generate_diff - Path not in entries or created: {$path}");
             }
         }
 
@@ -507,8 +497,6 @@ class Git_Tracker {
             $padded_len = (int)(ceil($entry_len / 8) * 8);
             $offset = $entry_start + $padded_len;
 
-            error_log("Git_Tracker::read_index - Read entry: '{$name}' (len=" . strlen($name) . ", name_len_from_flags={$name_len}), sha={$sha}");
-
             if (!empty($name)) {
                 $entries[$name] = [
                     'sha' => $sha,
@@ -518,21 +506,16 @@ class Git_Tracker {
             }
         }
 
-        error_log("Git_Tracker::read_index - Total entries: " . count($entries));
         return $entries;
     }
 
     private function write_index(array $entries): void {
         ksort($entries);
 
-        error_log("Git_Tracker::write_index - Writing " . count($entries) . " entries");
-
         $body = '';
         $now = time();
 
         foreach ($entries as $path => $info) {
-            error_log("Git_Tracker::write_index - Entry: '{$path}' (len=" . strlen($path) . "), sha=" . $info['sha']);
-
             // ctime, mtime (16 bytes)
             $body .= pack('NN', $now, 0);
             $body .= pack('NN', $now, 0);
@@ -623,7 +606,7 @@ class Git_Tracker {
     /**
      * Update the ai-changes branch with current working directory state of tracked files.
      */
-    private function update_ai_changes_branch(): void {
+    private function update_ai_changes_branch(string $changed_path = '', string $reason = ''): void {
         $entries = $this->read_index();
         $created = $this->get_created_files();
 
@@ -664,7 +647,13 @@ class Git_Tracker {
             $parent = trim(file_get_contents($ref_path));
         }
 
-        $commit_sha = $this->write_commit($tree_sha, $parent, "AI modifications");
+        // Build commit message from path and reason
+        $message = $reason ?: 'AI modification';
+        if ($changed_path) {
+            $message = $changed_path . ': ' . $message;
+        }
+
+        $commit_sha = $this->write_commit($tree_sha, $parent, $message);
 
         // Update ref
         file_put_contents($ref_path, $commit_sha . "\n");

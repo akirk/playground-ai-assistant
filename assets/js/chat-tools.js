@@ -22,9 +22,10 @@
                         type: 'object',
                         properties: {
                             path: { type: 'string', description: 'Relative path from wp-content' },
-                            content: { type: 'string', description: 'The content to write to the file' }
+                            content: { type: 'string', description: 'The content to write to the file' },
+                            reason: { type: 'string', description: 'Brief explanation of why this file is being created (used for change tracking)' }
                         },
-                        required: ['path', 'content']
+                        required: ['path', 'content', 'reason']
                     }
                 },
                 {
@@ -45,9 +46,10 @@
                                     },
                                     required: ['search', 'replace']
                                 }
-                            }
+                            },
+                            reason: { type: 'string', description: 'Brief explanation of why this file is being edited (used for change tracking)' }
                         },
-                        required: ['path', 'edits']
+                        required: ['path', 'edits', 'reason']
                     }
                 },
                 {
@@ -56,9 +58,10 @@
                     input_schema: {
                         type: 'object',
                         properties: {
-                            path: { type: 'string', description: 'Relative path from wp-content' }
+                            path: { type: 'string', description: 'Relative path from wp-content' },
+                            reason: { type: 'string', description: 'Brief explanation of why this file is being deleted (used for change tracking)' }
                         },
-                        required: ['path']
+                        required: ['path', 'reason']
                     }
                 },
                 {
