@@ -2,7 +2,7 @@
     'use strict';
 
     var AiChanges = {
-        currentFileIds: [],
+        currentFilePaths: [],
         previewTimeout: null,
 
         init: function() {
@@ -99,16 +99,16 @@
             $(document).on('click', '.ai-revert-file', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                var fileId = $(this).data('id');
-                self.revertFile(fileId, $(this));
+                var filePath = $(this).data('path');
+                self.revertFile(filePath, $(this));
             });
 
             // Reapply file
             $(document).on('click', '.ai-reapply-file', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                var fileId = $(this).data('id');
-                self.reapplyFile(fileId, $(this));
+                var filePath = $(this).data('path');
+                self.reapplyFile(filePath, $(this));
             });
 
             // Revert directory
@@ -128,20 +128,12 @@
             $('#ai-diff-preview').hide();
         },
 
-        getSelectedFileIds: function() {
-            var ids = [];
+        getSelectedFilePaths: function() {
+            var paths = [];
             $('.ai-file-checkbox:checked').each(function() {
-                var allIds = $(this).data('ids');
-                if (allIds) {
-                    // data-ids contains comma-separated list of all patch IDs for this file
-                    String(allIds).split(',').forEach(function(id) {
-                        ids.push(parseInt(id, 10));
-                    });
-                } else {
-                    ids.push($(this).data('id'));
-                }
+                paths.push($(this).data('path'));
             });
-            return ids;
+            return paths;
         },
 
         scheduleAutoPreview: function() {
@@ -155,14 +147,14 @@
         },
 
         autoPreview: function() {
-            var fileIds = this.getSelectedFileIds();
+            var filePaths = this.getSelectedFilePaths();
             var $code = $('#ai-diff-preview').find('code');
             var $download = $('#ai-download-diff');
 
-            if (fileIds.length === 0) {
+            if (filePaths.length === 0) {
                 $code.html('<span class="ai-diff-preview-empty">Select files above to preview the diff</span>');
                 $download.prop('disabled', true);
-                this.currentFileIds = [];
+                this.currentFilePaths = [];
                 return;
             }
 
@@ -170,7 +162,7 @@
             this.showPreviewPanel();
 
             // Check if selection changed
-            if (JSON.stringify(fileIds) === JSON.stringify(this.currentFileIds)) {
+            if (JSON.stringify(filePaths) === JSON.stringify(this.currentFilePaths)) {
                 return;
             }
 
@@ -181,10 +173,10 @@
             $.post(aiChanges.ajaxUrl, {
                 action: 'ai_assistant_generate_diff',
                 nonce: aiChanges.nonce,
-                file_ids: fileIds
+                file_paths: filePaths
             }, function(response) {
                 if (response.success) {
-                    self.currentFileIds = fileIds;
+                    self.currentFilePaths = filePaths;
                     $code.html(self.highlightDiff(response.data.diff));
                     $download.prop('disabled', false);
                 } else {
@@ -232,10 +224,8 @@
         },
 
         toggleFilePreview: function($toggle) {
-            var fileId = $toggle.data('id');
-            var allIds = $toggle.data('ids');
-            var fileIds = allIds ? String(allIds).split(',').map(function(id) { return parseInt(id, 10); }) : [fileId];
-            var $preview = $('.ai-file-inline-preview[data-id="' + fileId + '"]');
+            var filePath = $toggle.data('path');
+            var $preview = $('.ai-file-inline-preview[data-path="' + filePath + '"]');
             var $code = $preview.find('code');
             var isVisible = $preview.is(':visible');
 
@@ -250,7 +240,7 @@
                     $.post(aiChanges.ajaxUrl, {
                         action: 'ai_assistant_generate_diff',
                         nonce: aiChanges.nonce,
-                        file_ids: fileIds
+                        file_paths: [filePath]
                     }, function(response) {
                         if (response.success) {
                             $code.html(self.highlightDiff(response.data.diff));
@@ -267,13 +257,13 @@
         },
 
         downloadDiff: function() {
-            if (this.currentFileIds.length === 0) {
+            if (this.currentFilePaths.length === 0) {
                 alert(aiChanges.strings.noSelection);
                 return;
             }
 
             var downloadUrl = aiChanges.downloadUrl +
-                '&file_ids=' + this.currentFileIds.join(',') +
+                '&file_paths=' + encodeURIComponent(this.currentFilePaths.join(',')) +
                 '&_wpnonce=' + aiChanges.downloadNonce;
 
             window.location.href = downloadUrl;
@@ -336,7 +326,7 @@
             });
         },
 
-        revertFile: function(fileId, $button) {
+        revertFile: function(filePath, $button) {
             if (!confirm(aiChanges.strings.confirmRevert)) {
                 return;
             }
@@ -348,10 +338,10 @@
             $.post(aiChanges.ajaxUrl, {
                 action: 'ai_assistant_revert_file',
                 nonce: aiChanges.nonce,
-                file_id: fileId
+                file_path: filePath
             }, function(response) {
                 if (response.success) {
-                    self.updateFileState(fileId, $button, true);
+                    self.updateFileState(filePath, $button, true);
                 } else {
                     alert(response.data.message || aiChanges.strings.revertError);
                     $button.text(originalText).prop('disabled', false);
@@ -362,7 +352,7 @@
             });
         },
 
-        reapplyFile: function(fileId, $button) {
+        reapplyFile: function(filePath, $button) {
             if (!confirm(aiChanges.strings.confirmReapply)) {
                 return;
             }
@@ -374,10 +364,10 @@
             $.post(aiChanges.ajaxUrl, {
                 action: 'ai_assistant_reapply_file',
                 nonce: aiChanges.nonce,
-                file_id: fileId
+                file_path: filePath
             }, function(response) {
                 if (response.success) {
-                    self.updateFileState(fileId, $button, false);
+                    self.updateFileState(filePath, $button, false);
                 } else {
                     alert(response.data.message || aiChanges.strings.reapplyError);
                     $button.text(originalText).prop('disabled', false);
@@ -388,14 +378,16 @@
             });
         },
 
-        updateFileState: function(fileId, $button, isReverted) {
+        updateFileState: function(filePath, $button, isReverted) {
             var $row = $button.closest('.ai-changes-file-row');
             var $label = $row.find('label');
-            var $dateSpan = $label.find('.ai-changes-date');
+            var $lintStatus = $label.find('.ai-lint-status');
 
             if (isReverted) {
-                // Add reverted badge before the date
-                $('<span class="ai-changes-type ai-changes-type-reverted">Reverted</span>').insertBefore($dateSpan);
+                // Add reverted badge before the lint status
+                if ($label.find('.ai-changes-type-reverted').length === 0) {
+                    $('<span class="ai-changes-type ai-changes-type-reverted">Reverted</span>').insertBefore($lintStatus);
+                }
                 // Replace button with Reapply
                 $button
                     .removeClass('ai-revert-file')
@@ -416,11 +408,11 @@
             }
 
             // Clear the inline preview cache so it reloads fresh diff next time
-            var $preview = $('.ai-file-inline-preview[data-id="' + fileId + '"]');
+            var $preview = $('.ai-file-inline-preview[data-path="' + filePath + '"]');
             $preview.find('code').html('');
 
             // Re-lint the file since contents changed
-            this.lintFile(fileId);
+            this.lintFile(filePath);
         },
 
         revertDirectory: function(dir, $button) {
@@ -439,9 +431,9 @@
                 return;
             }
 
-            var fileIds = [];
+            var filePaths = [];
             $revertButtons.each(function() {
-                fileIds.push($(this).data('id'));
+                filePaths.push($(this).data('path'));
             });
 
             var originalText = $button.text();
@@ -451,14 +443,14 @@
             $.post(aiChanges.ajaxUrl, {
                 action: 'ai_assistant_revert_files',
                 nonce: aiChanges.nonce,
-                file_ids: fileIds
+                file_paths: filePaths
             }, function(response) {
                 if (response.success) {
                     var reverted = response.data.reverted || [];
-                    reverted.forEach(function(fileId) {
-                        var $fileButton = $directory.find('.ai-revert-file[data-id="' + fileId + '"]');
+                    reverted.forEach(function(filePath) {
+                        var $fileButton = $directory.find('.ai-revert-file[data-path="' + filePath + '"]');
                         if ($fileButton.length) {
-                            self.updateFileState(fileId, $fileButton, true);
+                            self.updateFileState(filePath, $fileButton, true);
                         }
                     });
 
@@ -478,20 +470,20 @@
         lintAllPhpFiles: function() {
             var self = this;
             $('.ai-lint-status').each(function() {
-                var fileId = $(this).data('id');
-                self.lintFile(fileId);
+                var filePath = $(this).data('path');
+                self.lintFile(filePath);
             });
         },
 
-        lintFile: function(fileId) {
+        lintFile: function(filePath) {
             var self = this;
-            var $status = $('.ai-lint-status[data-id="' + fileId + '"]');
+            var $status = $('.ai-lint-status[data-path="' + filePath + '"]');
             var $directory = $status.closest('.ai-changes-directory');
 
             $.post(aiChanges.ajaxUrl, {
                 action: 'ai_assistant_lint_php',
                 nonce: aiChanges.nonce,
-                file_id: fileId
+                file_path: filePath
             }, function(response) {
                 if (!response.success || !response.data.is_php) {
                     return;
