@@ -137,6 +137,47 @@
                 var sha = $(this).data('sha');
                 self.revertToCommit(sha, $(this));
             });
+
+            // Commit diff toggle
+            $(document).on('click', '.ai-commit-diff-toggle', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                self.toggleCommitDiff($(this));
+            });
+        },
+
+        toggleCommitDiff: function($toggle) {
+            var self = this;
+            var sha = $toggle.data('sha');
+            var $preview = $('.ai-commit-diff-preview[data-sha="' + sha + '"]');
+            var $code = $preview.find('code');
+            var isVisible = $preview.is(':visible');
+
+            if (isVisible) {
+                $toggle.text('▶').removeClass('expanded');
+                $preview.slideUp(200);
+            } else {
+                $toggle.text('▼').addClass('expanded');
+                $preview.slideDown(200);
+
+                // Load diff if not already loaded
+                if (!$code.html()) {
+                    $code.html('<span class="loading">Loading...</span>');
+                    $.get(aiChanges.ajaxUrl, {
+                        action: 'ai_assistant_get_commit_diff',
+                        nonce: aiChanges.nonce,
+                        sha: sha
+                    }, function(response) {
+                        if (response.success) {
+                            $code.html(self.highlightDiff(response.data.diff));
+                        } else {
+                            $code.html('<span class="error">Failed to load diff</span>');
+                        }
+                    }).fail(function() {
+                        $code.html('<span class="error">Failed to load diff</span>');
+                    });
+                }
+            }
         },
 
         showPreviewPanel: function() {

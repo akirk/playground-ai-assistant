@@ -444,6 +444,77 @@ class Git_Tracker {
     }
 
     /**
+     * Get the diff for a specific commit compared to its parent.
+     *
+     * @param string $sha The commit SHA.
+     * @return string Unified diff output.
+     */
+    public function get_commit_diff(string $sha): string {
+        if (!$this->is_active()) {
+            return '';
+        }
+
+        $commit_data = $this->read_object($sha);
+        if ($commit_data === null || $commit_data['type'] !== 'commit') {
+            return '';
+        }
+
+        // Parse tree and parent from commit
+        $tree_sha = null;
+        $parent_sha = null;
+
+        if (preg_match('/^tree ([a-f0-9]{40})/m', $commit_data['content'], $m)) {
+            $tree_sha = $m[1];
+        }
+        if (preg_match('/^parent ([a-f0-9]{40})/m', $commit_data['content'], $m)) {
+            $parent_sha = $m[1];
+        }
+
+        if (!$tree_sha) {
+            return '';
+        }
+
+        // Get files from this commit's tree
+        $current_files = $this->get_tree_files($tree_sha, '');
+
+        // Get files from parent's tree (empty if no parent)
+        $parent_files = [];
+        if ($parent_sha) {
+            $parent_data = $this->read_object($parent_sha);
+            if ($parent_data && preg_match('/^tree ([a-f0-9]{40})/m', $parent_data['content'], $m)) {
+                $parent_files = $this->get_tree_files($m[1], '');
+            }
+        }
+
+        // Find changed files
+        $all_paths = array_unique(array_merge(array_keys($current_files), array_keys($parent_files)));
+        $diffs = [];
+
+        foreach ($all_paths as $path) {
+            $old_sha = $parent_files[$path] ?? null;
+            $new_sha = $current_files[$path] ?? null;
+
+            // Skip if unchanged
+            if ($old_sha === $new_sha) {
+                continue;
+            }
+
+            $old_content = $old_sha ? $this->read_blob($old_sha) : null;
+            $new_content = $new_sha ? $this->read_blob($new_sha) : null;
+
+            if ($old_content === null && $new_content !== null) {
+                $diffs[] = $this->format_diff($path, '', $new_content, 'created');
+            } elseif ($old_content !== null && $new_content === null) {
+                $diffs[] = $this->format_diff($path, $old_content, '', 'deleted');
+            } else {
+                $diffs[] = $this->format_diff($path, $old_content ?? '', $new_content ?? '', 'modified');
+            }
+        }
+
+        return implode("\n", $diffs);
+    }
+
+    /**
      * Revert all files to the state at a specific commit.
      *
      * This restores files to how they were at the given commit on ai-changes branch,

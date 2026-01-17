@@ -25,6 +25,7 @@ class Changes_Admin {
         add_action('wp_ajax_ai_assistant_revert_files', [$this, 'ajax_revert_files']);
         add_action('wp_ajax_ai_assistant_lint_php', [$this, 'ajax_lint_php']);
         add_action('wp_ajax_ai_assistant_get_commit_log', [$this, 'ajax_get_commit_log']);
+        add_action('wp_ajax_ai_assistant_get_commit_diff', [$this, 'ajax_get_commit_diff']);
         add_action('wp_ajax_ai_assistant_revert_to_commit', [$this, 'ajax_revert_to_commit']);
         add_action('admin_action_ai_assistant_download_diff', [$this, 'handle_diff_download']);
     }
@@ -168,22 +169,28 @@ class Changes_Admin {
                 </div>
                 <div class="ai-commit-log-list" style="display: none;">
                     <?php foreach ($commits as $index => $commit): ?>
-                    <div class="ai-commit-row<?php echo $index === 0 ? ' ai-commit-current' : ''; ?>" data-sha="<?php echo esc_attr($commit['sha']); ?>">
-                        <div class="ai-commit-row-top">
-                            <span class="ai-commit-sha"><?php echo esc_html($commit['short_sha']); ?></span>
-                            <span class="ai-commit-message"><?php echo esc_html($commit['message']); ?></span>
+                    <div class="ai-commit-entry">
+                        <div class="ai-commit-row<?php echo $index === 0 ? ' ai-commit-current' : ''; ?>" data-sha="<?php echo esc_attr($commit['sha']); ?>">
+                            <div class="ai-commit-row-top">
+                                <button type="button" class="ai-commit-diff-toggle" data-sha="<?php echo esc_attr($commit['sha']); ?>" title="<?php esc_attr_e('Preview diff', 'ai-assistant'); ?>">▶</button>
+                                <span class="ai-commit-sha"><?php echo esc_html($commit['short_sha']); ?></span>
+                                <span class="ai-commit-message"><?php echo esc_html($commit['message']); ?></span>
+                            </div>
+                            <div class="ai-commit-row-bottom">
+                                <span class="ai-commit-date" title="<?php echo esc_attr($commit['date']); ?>">
+                                    <?php echo esc_html($this->time_ago($commit['timestamp'])); ?>
+                                </span>
+                                <?php if ($index > 0): ?>
+                                <button type="button" class="button button-small ai-revert-to-commit" data-sha="<?php echo esc_attr($commit['sha']); ?>" title="<?php esc_attr_e('Revert files to this commit', 'ai-assistant'); ?>">
+                                    <?php esc_html_e('Revert to here', 'ai-assistant'); ?>
+                                </button>
+                                <?php else: ?>
+                                <span class="ai-commit-label"><?php esc_html_e('(current)', 'ai-assistant'); ?></span>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                        <div class="ai-commit-row-bottom">
-                            <span class="ai-commit-date" title="<?php echo esc_attr($commit['date']); ?>">
-                                <?php echo esc_html($this->time_ago($commit['timestamp'])); ?>
-                            </span>
-                            <?php if ($index > 0): ?>
-                            <button type="button" class="button button-small ai-revert-to-commit" data-sha="<?php echo esc_attr($commit['sha']); ?>" title="<?php esc_attr_e('Revert files to this commit', 'ai-assistant'); ?>">
-                                <?php esc_html_e('Revert to here', 'ai-assistant'); ?>
-                            </button>
-                            <?php else: ?>
-                            <span class="ai-commit-label"><?php esc_html_e('(current)', 'ai-assistant'); ?></span>
-                            <?php endif; ?>
+                        <div class="ai-commit-diff-preview" data-sha="<?php echo esc_attr($commit['sha']); ?>" style="display: none;">
+                            <pre><code></code></pre>
                         </div>
                     </div>
                     <?php endforeach; ?>
@@ -548,6 +555,23 @@ class Changes_Admin {
         $commits = $this->git_tracker->get_commit_log($limit);
 
         wp_send_json_success(['commits' => $commits]);
+    }
+
+    public function ajax_get_commit_diff(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $sha = isset($_GET['sha']) ? sanitize_text_field($_GET['sha']) : '';
+
+        if (empty($sha) || !preg_match('/^[a-f0-9]{40}$/', $sha)) {
+            wp_send_json_error(['message' => 'Invalid commit SHA']);
+        }
+
+        $diff = $this->git_tracker->get_commit_diff($sha);
+        wp_send_json_success(['diff' => $diff]);
     }
 
     public function ajax_revert_to_commit(): void {

@@ -554,3 +554,95 @@
     min-height: 0 !important;
     line-height: 1.4 !important;
 }
+
+.ai-commit-diff-toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-size: 10px;
+    color: #646970;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 14px;
+}
+
+.ai-commit-diff-toggle:hover {
+    color: #2271b1;
+}
+
+.ai-commit-diff-toggle.expanded {
+    color: #2271b1;
+}
+
+.ai-commit-entry {
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.ai-commit-entry:last-child {
+    border-bottom: none;
+}
+
+.ai-commit-entry .ai-commit-row {
+    border-bottom: none;
+}
+
+.ai-commit-diff-preview {
+    margin: 0 16px 12px 28px;
+    background: #f6f7f7;
+    border: 1px solid #e2e4e7;
+    border-radius: 3px;
+    max-height: 300px;
+    overflow: auto;
+}
+
+.ai-commit-diff-preview pre {
+    margin: 0;
+    padding: 10px 12px;
+    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.ai-commit-diff-preview code {
+    background: none;
+    padding: 0;
+    white-space: pre;
+    display: block;
+}
+
+.ai-commit-diff-preview .diff-header {
+    color: #2271b1;
+    font-weight: 600;
+}
+
+.ai-commit-diff-preview .diff-file {
+    color: #50575e;
+}
+
+.ai-commit-diff-preview .diff-hunk {
+    color: #9a6700;
+    margin-top: 4px;
+}
+
+.ai-commit-diff-preview .diff-add {
+    color: #007017;
+    background: #d4edda;
+}
+
+.ai-commit-diff-preview .diff-del {
+    color: #8a1f1f;
+    background: #f8d7da;
+}
+
+.ai-commit-diff-preview .loading,
+.ai-commit-diff-preview .error {
+    color: #646970;
+    padding: 12px;
+    text-align: center;
+    display: block;
+}
+
+.ai-commit-diff-preview .error {
+    color: #8a1f1f;
+}
