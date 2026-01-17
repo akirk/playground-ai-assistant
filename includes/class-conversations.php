@@ -416,11 +416,30 @@ class Conversations {
             return;
         }
 
-        // Create a tag name from the conversation
-        // Format: conv-{id}-{sanitized-title}
-        $tag_name = 'conv-' . $conversation_id;
+        // Check if this exact commit already has a tag from this conversation
+        $existing_tags = $git_tracker->get_tags();
+        $current_sha = null;
+        $ref_path = WP_CONTENT_DIR . '/.git/refs/heads/ai-changes';
+        if (file_exists($ref_path)) {
+            $current_sha = trim(file_get_contents($ref_path));
+        }
+
+        if ($current_sha) {
+            // Check if current commit already has a tag from this conversation
+            foreach ($existing_tags as $tag_name => $tag_sha) {
+                if ($tag_sha === $current_sha && strpos($tag_name, 'conv-' . $conversation_id . '-') === 0) {
+                    // Already tagged this commit for this conversation
+                    return;
+                }
+            }
+        }
+
+        // Create tag name with timestamp
+        // Format: conv-{id}-{timestamp}-{sanitized-title}
+        $tag_name = 'conv-' . $conversation_id . '-' . time();
         if (!empty($title)) {
             $sanitized_title = substr(preg_replace('/[^a-zA-Z0-9]/', '-', strtolower($title)), 0, 30);
+            $sanitized_title = preg_replace('/-+/', '-', $sanitized_title); // Collapse multiple dashes
             $sanitized_title = trim($sanitized_title, '-');
             if (!empty($sanitized_title)) {
                 $tag_name .= '-' . $sanitized_title;

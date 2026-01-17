@@ -308,17 +308,25 @@
         },
 
         formatTagName: function(tag) {
-            // Format conversation tag: conv-123-my-title -> "My Title"
+            // Format conversation tag: conv-{id}-{timestamp}-{title} -> "Title"
+            // The full tag with timestamp is shown in the tooltip
             if (tag.indexOf('conv-') === 0) {
                 var parts = tag.substring(5).split('-');
-                // Remove conversation ID (first part)
-                if (parts.length > 1 && /^\d+$/.test(parts[0])) {
+                // Remove conversation ID (first part, numeric)
+                if (parts.length > 0 && /^\d+$/.test(parts[0])) {
                     parts.shift();
                 }
-                // Capitalize words
-                return parts.map(function(word) {
-                    return word.charAt(0).toUpperCase() + word.slice(1);
-                }).join(' ') || tag;
+                // Remove timestamp (second part, 10-digit number)
+                if (parts.length > 0 && /^\d{10}$/.test(parts[0])) {
+                    parts.shift();
+                }
+                // Capitalize remaining words (the title)
+                if (parts.length > 0) {
+                    return parts.map(function(word) {
+                        return word.charAt(0).toUpperCase() + word.slice(1);
+                    }).join(' ');
+                }
+                return tag;
             }
             return tag;
         },
