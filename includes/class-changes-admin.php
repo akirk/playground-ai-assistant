@@ -144,7 +144,7 @@ class Changes_Admin {
             <h1><?php esc_html_e('AI Changes', 'ai-assistant'); ?></h1>
 
             <p class="description">
-                <?php esc_html_e('Track and export changes made by the AI assistant. Select files or directories to generate a unified diff patch.', 'ai-assistant'); ?>
+                <?php esc_html_e('Review changes made by the AI assistant. Use the commit history to see individual changes and revert to any previous state, or export selected files as a patch.', 'ai-assistant'); ?>
             </p>
 
             <?php if ($has_changes): ?>
