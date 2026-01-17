@@ -88,6 +88,12 @@ class Changes_Admin {
                 'confirmRevertToCommit' => __('Are you sure you want to revert all files to this commit? This will restore files to how they were at that point.', 'ai-assistant'),
                 'revertingToCommit' => __('Reverting...', 'ai-assistant'),
                 'revertToCommitError' => __('Failed to revert to commit.', 'ai-assistant'),
+                'loading' => __('Loading...', 'ai-assistant'),
+                'loadMore' => __('Load more', 'ai-assistant'),
+                'current' => __('(current)', 'ai-assistant'),
+                'revertToHere' => __('Revert to here', 'ai-assistant'),
+                'revertToCommitTitle' => __('Revert files to this commit', 'ai-assistant'),
+                'justNow' => __('just now', 'ai-assistant'),
             ],
         ]);
     }
@@ -136,9 +142,7 @@ class Changes_Admin {
 
     public function render_page(): void {
         $directories = $this->git_tracker->get_changes_by_directory();
-        $commits = $this->git_tracker->get_commit_log(50);
         $has_changes = !empty($directories);
-        $has_commits = !empty($commits);
         ?>
         <div class="wrap ai-changes-wrap">
             <h1><?php esc_html_e('AI Changes', 'ai-assistant'); ?></h1>
@@ -160,43 +164,16 @@ class Changes_Admin {
                 </button>
             </div>
 
-            <?php if ($has_commits): ?>
             <div class="ai-commit-log">
                 <div class="ai-commit-log-header">
                     <span class="ai-commit-log-toggle">▶</span>
                     <strong><?php esc_html_e('Commit History', 'ai-assistant'); ?></strong>
-                    <span class="ai-commit-log-count">(<?php echo count($commits); ?> <?php echo count($commits) === 1 ? 'commit' : 'commits'; ?>)</span>
+                    <span class="ai-commit-log-count"></span>
                 </div>
                 <div class="ai-commit-log-list" style="display: none;">
-                    <?php foreach ($commits as $index => $commit): ?>
-                    <div class="ai-commit-entry">
-                        <div class="ai-commit-row<?php echo $index === 0 ? ' ai-commit-current' : ''; ?>" data-sha="<?php echo esc_attr($commit['sha']); ?>">
-                            <div class="ai-commit-row-top">
-                                <button type="button" class="ai-commit-diff-toggle" data-sha="<?php echo esc_attr($commit['sha']); ?>" title="<?php esc_attr_e('Preview diff', 'ai-assistant'); ?>">▶</button>
-                                <span class="ai-commit-sha"><?php echo esc_html($commit['short_sha']); ?></span>
-                                <span class="ai-commit-message"><?php echo esc_html($commit['message']); ?></span>
-                            </div>
-                            <div class="ai-commit-row-bottom">
-                                <span class="ai-commit-date" title="<?php echo esc_attr($commit['date']); ?>">
-                                    <?php echo esc_html($this->time_ago($commit['timestamp'])); ?>
-                                </span>
-                                <?php if ($index > 0): ?>
-                                <button type="button" class="button button-small ai-revert-to-commit" data-sha="<?php echo esc_attr($commit['sha']); ?>" title="<?php esc_attr_e('Revert files to this commit', 'ai-assistant'); ?>">
-                                    <?php esc_html_e('Revert to here', 'ai-assistant'); ?>
-                                </button>
-                                <?php else: ?>
-                                <span class="ai-commit-label"><?php esc_html_e('(current)', 'ai-assistant'); ?></span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                        <div class="ai-commit-diff-preview" data-sha="<?php echo esc_attr($commit['sha']); ?>" style="display: none;">
-                            <pre><code></code></pre>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
+                    <div class="ai-commit-log-loading"><?php esc_html_e('Loading...', 'ai-assistant'); ?></div>
                 </div>
             </div>
-            <?php endif; ?>
 
             <div class="ai-changes-tree">
                 <?php foreach ($directories as $dir => $data): ?>
@@ -551,10 +528,15 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 50;
-        $commits = $this->git_tracker->get_commit_log($limit);
+        $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 20;
+        $offset = isset($_GET['offset']) ? (int) $_GET['offset'] : 0;
+        $result = $this->git_tracker->get_commit_log($limit, $offset);
 
-        wp_send_json_success(['commits' => $commits]);
+        wp_send_json_success([
+            'commits' => $result['commits'],
+            'has_more' => $result['has_more'],
+            'offset' => $offset,
+        ]);
     }
 
     public function ajax_get_commit_diff(): void {

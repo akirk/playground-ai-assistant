@@ -378,22 +378,24 @@ class Git_Tracker {
      * Get the commit log from the ai-changes branch.
      *
      * @param int $limit Maximum number of commits to return.
-     * @return array List of commits with sha, message, timestamp, and files_changed.
+     * @param int $offset Number of commits to skip (for pagination).
+     * @return array With 'commits' array and 'has_more' boolean.
      */
-    public function get_commit_log(int $limit = 50): array {
+    public function get_commit_log(int $limit = 20, int $offset = 0): array {
         if (!$this->is_active()) {
-            return [];
+            return ['commits' => [], 'has_more' => false];
         }
 
         $ref_path = $this->git_dir . '/refs/heads/ai-changes';
         if (!file_exists($ref_path)) {
-            return [];
+            return ['commits' => [], 'has_more' => false];
         }
 
         $commits = [];
         $sha = trim(file_get_contents($ref_path));
+        $skipped = 0;
 
-        while ($sha && count($commits) < $limit) {
+        while ($sha && count($commits) < $limit + 1) { // Fetch one extra to check has_more
             $commit_data = $this->read_object($sha);
             if ($commit_data === null || $commit_data['type'] !== 'commit') {
                 break;
@@ -427,6 +429,13 @@ class Git_Tracker {
                 }
             }
 
+            // Skip commits for offset
+            if ($skipped < $offset) {
+                $skipped++;
+                $sha = $parent;
+                continue;
+            }
+
             $commits[] = [
                 'sha' => $sha,
                 'short_sha' => substr($sha, 0, 7),
@@ -440,7 +449,13 @@ class Git_Tracker {
             $sha = $parent;
         }
 
-        return $commits;
+        // Check if there are more commits beyond the limit
+        $has_more = count($commits) > $limit;
+        if ($has_more) {
+            array_pop($commits); // Remove the extra commit we fetched
+        }
+
+        return ['commits' => $commits, 'has_more' => $has_more];
     }
 
     /**

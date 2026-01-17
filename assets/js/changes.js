@@ -4,6 +4,9 @@
     var AiChanges = {
         currentFilePaths: [],
         previewTimeout: null,
+        commitOffset: 0,
+        commitsLoaded: false,
+        hasMoreCommits: false,
 
         init: function() {
             this.bindEvents();
@@ -128,6 +131,17 @@
 
                 $toggle.text(willBeVisible ? '▼' : '▶');
                 $list.slideToggle(200);
+
+                // Lazy load commits on first expand
+                if (willBeVisible && !self.commitsLoaded) {
+                    self.loadCommits(false);
+                }
+            });
+
+            // Load more commits
+            $(document).on('click', '.ai-commit-load-more', function(e) {
+                e.preventDefault();
+                self.loadCommits(true);
             });
 
             // Revert to commit
@@ -178,6 +192,123 @@
                     });
                 }
             }
+        },
+
+        loadCommits: function(loadMore) {
+            var self = this;
+            var $list = $('.ai-commit-log-list');
+            var $count = $('.ai-commit-log-count');
+            var $loadMoreBtn = $list.find('.ai-commit-load-more');
+
+            if (!loadMore) {
+                // First load - show loading state
+                $list.find('.ai-commit-log-loading').show();
+                this.commitOffset = 0;
+            } else {
+                // Load more - disable button
+                $loadMoreBtn.prop('disabled', true).text(aiChanges.strings.loading || 'Loading...');
+            }
+
+            $.get(aiChanges.ajaxUrl, {
+                action: 'ai_assistant_get_commit_log',
+                nonce: aiChanges.nonce,
+                limit: 20,
+                offset: this.commitOffset
+            }, function(response) {
+                if (response.success) {
+                    var commits = response.data.commits;
+                    self.hasMoreCommits = response.data.has_more;
+
+                    if (!loadMore) {
+                        // First load - clear loading and render
+                        $list.find('.ai-commit-log-loading').hide();
+                        self.commitsLoaded = true;
+                    } else {
+                        // Load more - remove old button
+                        $loadMoreBtn.remove();
+                    }
+
+                    // Render commits
+                    commits.forEach(function(commit, index) {
+                        var isFirst = self.commitOffset === 0 && index === 0;
+                        $list.append(self.renderCommitRow(commit, isFirst));
+                    });
+
+                    // Update offset
+                    self.commitOffset += commits.length;
+
+                    // Update count
+                    var totalLoaded = self.commitOffset;
+                    var countText = '(' + totalLoaded + (self.hasMoreCommits ? '+' : '') + ' ' +
+                        (totalLoaded === 1 ? 'commit' : 'commits') + ')';
+                    $count.text(countText);
+
+                    // Add "Load more" button if there are more
+                    if (self.hasMoreCommits) {
+                        $list.append(
+                            '<div class="ai-commit-load-more-wrap">' +
+                            '<button type="button" class="button ai-commit-load-more">' +
+                            (aiChanges.strings.loadMore || 'Load more') +
+                            '</button></div>'
+                        );
+                    }
+                } else {
+                    $list.find('.ai-commit-log-loading').text('Failed to load commits');
+                }
+            }).fail(function() {
+                $list.find('.ai-commit-log-loading').text('Failed to load commits');
+            });
+        },
+
+        renderCommitRow: function(commit, isFirst) {
+            var revertButton = isFirst
+                ? '<span class="ai-commit-label">' + (aiChanges.strings.current || '(current)') + '</span>'
+                : '<button type="button" class="button button-small ai-revert-to-commit" data-sha="' + commit.sha + '" title="' + (aiChanges.strings.revertToCommitTitle || 'Revert files to this commit') + '">' +
+                  (aiChanges.strings.revertToHere || 'Revert to here') + '</button>';
+
+            return '<div class="ai-commit-entry">' +
+                '<div class="ai-commit-row' + (isFirst ? ' ai-commit-current' : '') + '" data-sha="' + commit.sha + '">' +
+                    '<div class="ai-commit-row-top">' +
+                        '<button type="button" class="ai-commit-diff-toggle" data-sha="' + commit.sha + '" title="Preview diff">▶</button>' +
+                        '<span class="ai-commit-sha">' + commit.short_sha + '</span>' +
+                        '<span class="ai-commit-message">' + this.escapeHtml(commit.message) + '</span>' +
+                    '</div>' +
+                    '<div class="ai-commit-row-bottom">' +
+                        '<span class="ai-commit-date" title="' + commit.date + '">' + this.formatTimeAgo(commit.timestamp) + '</span>' +
+                        revertButton +
+                    '</div>' +
+                '</div>' +
+                '<div class="ai-commit-diff-preview" data-sha="' + commit.sha + '" style="display: none;">' +
+                    '<pre><code></code></pre>' +
+                '</div>' +
+            '</div>';
+        },
+
+        escapeHtml: function(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        },
+
+        formatTimeAgo: function(timestamp) {
+            if (!timestamp) return '';
+            var diff = Math.floor(Date.now() / 1000) - timestamp;
+
+            if (diff < 60) return aiChanges.strings.justNow || 'just now';
+            if (diff < 3600) {
+                var mins = Math.floor(diff / 60);
+                return mins + ' ' + (mins === 1 ? 'min' : 'mins') + ' ago';
+            }
+            if (diff < 86400) {
+                var hours = Math.floor(diff / 3600);
+                return hours + ' ' + (hours === 1 ? 'hour' : 'hours') + ' ago';
+            }
+            if (diff < 604800) {
+                var days = Math.floor(diff / 86400);
+                return days + ' ' + (days === 1 ? 'day' : 'days') + ' ago';
+            }
+            var date = new Date(timestamp * 1000);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         },
 
         showPreviewPanel: function() {
