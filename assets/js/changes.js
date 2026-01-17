@@ -178,7 +178,7 @@
 
                 // Load diff if not already loaded
                 if (!$code.html()) {
-                    $code.html('<span class="loading">Loading...</span>');
+                    $code.html('<span class="loading">' + __('Loading...', 'ai-assistant') + '</span>');
                     $.get(aiChanges.ajaxUrl, {
                         action: 'ai_assistant_get_commit_diff',
                         nonce: aiChanges.nonce,
@@ -187,10 +187,10 @@
                         if (response.success) {
                             $code.html(self.highlightDiff(response.data.diff));
                         } else {
-                            $code.html('<span class="error">Failed to load diff</span>');
+                            $code.html('<span class="error">' + __('Failed to load diff', 'ai-assistant') + '</span>');
                         }
                     }).fail(function() {
-                        $code.html('<span class="error">Failed to load diff</span>');
+                        $code.html('<span class="error">' + __('Failed to load diff', 'ai-assistant') + '</span>');
                     });
                 }
             }
@@ -233,8 +233,8 @@
                     // Handle empty commits
                     if (commits.length === 0 && !loadMore) {
                         $list.append('<div class="ai-commit-log-empty">' +
-                            (aiChanges.strings.noCommits || 'No commits yet') + '</div>');
-                        $count.text('(0 commits)');
+                            __('No commits yet', 'ai-assistant') + '</div>');
+                        $count.text('(0 ' + __('commits', 'ai-assistant') + ')');
                         return;
                     }
 
@@ -250,7 +250,7 @@
                     // Update count
                     var totalLoaded = self.commitOffset;
                     var countText = '(' + totalLoaded + (self.hasMoreCommits ? '+' : '') + ' ' +
-                        (totalLoaded === 1 ? 'commit' : 'commits') + ')';
+                        (totalLoaded === 1 ? __('commit', 'ai-assistant') : __('commits', 'ai-assistant')) + ')';
                     $count.text(countText);
 
                     // Add "Load more" button if there are more
@@ -263,10 +263,10 @@
                         );
                     }
                 } else {
-                    $list.find('.ai-commit-log-loading').text('Failed to load commits');
+                    $list.find('.ai-commit-log-loading').text(__('Failed to load commits', 'ai-assistant'));
                 }
             }).fail(function() {
-                $list.find('.ai-commit-log-loading').text('Failed to load commits');
+                $list.find('.ai-commit-log-loading').text(__('Failed to load commits', 'ai-assistant'));
             });
         },
 
@@ -279,7 +279,7 @@
             return '<div class="ai-commit-entry">' +
                 '<div class="ai-commit-row' + (isFirst ? ' ai-commit-current' : '') + '" data-sha="' + commit.sha + '">' +
                     '<div class="ai-commit-row-top">' +
-                        '<button type="button" class="ai-commit-diff-toggle" data-sha="' + commit.sha + '" title="Preview diff">▶</button>' +
+                        '<button type="button" class="ai-commit-diff-toggle" data-sha="' + commit.sha + '" title="' + __('Preview diff', 'ai-assistant') + '">▶</button>' +
                         '<span class="ai-commit-sha">' + commit.short_sha + '</span>' +
                         '<span class="ai-commit-message">' + this.escapeHtml(commit.message) + '</span>' +
                     '</div>' +
@@ -304,18 +304,21 @@
             if (!timestamp) return '';
             var diff = Math.floor(Date.now() / 1000) - timestamp;
 
-            if (diff < 60) return aiChanges.strings.justNow || 'just now';
+            if (diff < 60) return __('just now', 'ai-assistant');
             if (diff < 3600) {
                 var mins = Math.floor(diff / 60);
-                return mins + ' ' + (mins === 1 ? 'min' : 'mins') + ' ago';
+                /* translators: %d is the number of minutes */
+                return sprintf(__('%d min ago', 'ai-assistant'), mins);
             }
             if (diff < 86400) {
                 var hours = Math.floor(diff / 3600);
-                return hours + ' ' + (hours === 1 ? 'hour' : 'hours') + ' ago';
+                /* translators: %d is the number of hours */
+                return sprintf(__('%d hours ago', 'ai-assistant'), hours);
             }
             if (diff < 604800) {
                 var days = Math.floor(diff / 86400);
-                return days + ' ' + (days === 1 ? 'day' : 'days') + ' ago';
+                /* translators: %d is the number of days */
+                return sprintf(__('%d days ago', 'ai-assistant'), days);
             }
             var date = new Date(timestamp * 1000);
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -353,7 +356,7 @@
             var $download = $('#ai-download-diff');
 
             if (filePaths.length === 0) {
-                $code.html('<span class="ai-diff-preview-empty">Select files above to preview the diff</span>');
+                $code.html('<span class="ai-diff-preview-empty">' + __('Select files above to preview the diff', 'ai-assistant') + '</span>');
                 $download.prop('disabled', true);
                 this.currentFilePaths = [];
                 return;
@@ -367,7 +370,7 @@
                 return;
             }
 
-            $code.html('<span class="ai-diff-preview-empty">Generating diff...</span>');
+            $code.html('<span class="ai-diff-preview-empty">' + __('Generating diff...', 'ai-assistant') + '</span>');
             $download.prop('disabled', true);
 
             var self = this;
@@ -381,10 +384,10 @@
                     $code.html(self.highlightDiff(response.data.diff));
                     $download.prop('disabled', false);
                 } else {
-                    $code.html('<span class="ai-diff-preview-empty">Error: ' + (response.data.message || 'Failed to generate diff') + '</span>');
+                    $code.html('<span class="ai-diff-preview-empty">' + __('Error:', 'ai-assistant') + ' ' + (response.data.message || __('Failed to generate diff', 'ai-assistant')) + '</span>');
                 }
             }).fail(function() {
-                $code.html('<span class="ai-diff-preview-empty">Failed to generate diff</span>');
+                $code.html('<span class="ai-diff-preview-empty">' + __('Failed to generate diff', 'ai-assistant') + '</span>');
             });
         },
 
@@ -436,7 +439,7 @@
             } else {
                 // Check if already loaded
                 if ($code.html() === '') {
-                    $code.html('<span class="loading">Loading...</span>');
+                    $code.html('<span class="loading">' + __('Loading...', 'ai-assistant') + '</span>');
                     var self = this;
                     $.post(aiChanges.ajaxUrl, {
                         action: 'ai_assistant_generate_diff',
@@ -446,10 +449,10 @@
                         if (response.success) {
                             $code.html(self.highlightDiff(response.data.diff));
                         } else {
-                            $code.html('<span class="loading">Error loading diff</span>');
+                            $code.html('<span class="loading">' + __('Error loading diff', 'ai-assistant') + '</span>');
                         }
                     }).fail(function() {
-                        $code.html('<span class="loading">Error loading diff</span>');
+                        $code.html('<span class="loading">' + __('Error loading diff', 'ai-assistant') + '</span>');
                     });
                 }
                 $preview.slideDown(150);
@@ -486,11 +489,11 @@
                 if (response.success) {
                     location.reload();
                 } else {
-                    alert(response.data.message || 'Failed to clear history');
+                    alert(response.data.message || __('Failed to clear history', 'ai-assistant'));
                     $button.text(originalText).prop('disabled', false);
                 }
             }).fail(function() {
-                alert('Failed to clear history');
+                alert(__('Failed to clear history', 'ai-assistant'));
                 $button.text(originalText).prop('disabled', false);
             });
         },
@@ -587,7 +590,7 @@
             if (isReverted) {
                 // Add reverted badge before the lint status
                 if ($label.find('.ai-changes-type-reverted').length === 0) {
-                    $('<span class="ai-changes-type ai-changes-type-reverted">Reverted</span>').insertBefore($lintStatus);
+                    $('<span class="ai-changes-type ai-changes-type-reverted">' + __('Reverted', 'ai-assistant') + '</span>').insertBefore($lintStatus);
                 }
                 // Replace button with Reapply
                 $button
@@ -719,16 +722,17 @@
 
                 if (response.data.valid) {
                     $status
-                        .text(aiChanges.strings.syntaxOk || 'Syntax OK')
+                        .text(__('Syntax OK', 'ai-assistant'))
                         .removeClass('ai-lint-error')
                         .addClass('ai-lint-ok');
                 } else {
-                    var errorMsg = response.data.error || 'Syntax error';
+                    var errorMsg = response.data.error || __('Syntax error', 'ai-assistant');
                     if (response.data.line) {
-                        errorMsg += ' (line ' + response.data.line + ')';
+                        /* translators: %d is the line number */
+                        errorMsg += ' ' + sprintf(__('(line %d)', 'ai-assistant'), response.data.line);
                     }
                     $status
-                        .text(aiChanges.strings.syntaxError || 'Syntax Error')
+                        .text(__('Syntax Error', 'ai-assistant'))
                         .removeClass('ai-lint-ok')
                         .addClass('ai-lint-error')
                         .attr('title', errorMsg);
@@ -750,8 +754,9 @@
             var errorCount = $directory.find('.ai-lint-error').length;
 
             if (errorCount > 0) {
+                /* translators: %d is the number of syntax errors */
                 $dirStatus
-                    .text(errorCount + ' syntax ' + (errorCount === 1 ? 'error' : 'errors'))
+                    .text(sprintf(__('%d syntax errors', 'ai-assistant'), errorCount))
                     .addClass('ai-lint-error')
                     .show();
             } else {
