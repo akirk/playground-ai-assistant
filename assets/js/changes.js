@@ -1,6 +1,8 @@
 (function($) {
     'use strict';
 
+    var { __, sprintf } = wp.i18n;
+
     var AiChanges = {
         currentFilePaths: [],
         previewTimeout: null,
