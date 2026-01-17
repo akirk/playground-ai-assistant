@@ -222,6 +222,9 @@ class Conversations {
             update_post_meta($post_id, '_ai_model', $model);
         }
 
+        // Tag the current commit with conversation info if there are tracked changes
+        $this->tag_conversation_commit($post_id, $title);
+
         wp_send_json_success([
             'conversation_id' => $post_id,
             'title' => get_the_title($post_id),
@@ -399,6 +402,32 @@ class Conversations {
             }
         }
         return trim($text);
+    }
+
+    /**
+     * Tag the current commit with conversation information.
+     *
+     * @param int $conversation_id The conversation post ID.
+     * @param string $title The conversation title.
+     */
+    private function tag_conversation_commit(int $conversation_id, string $title): void {
+        $git_tracker = ai_assistant()->git_tracker();
+        if (!$git_tracker || !$git_tracker->has_changes()) {
+            return;
+        }
+
+        // Create a tag name from the conversation
+        // Format: conv-{id}-{sanitized-title}
+        $tag_name = 'conv-' . $conversation_id;
+        if (!empty($title)) {
+            $sanitized_title = substr(preg_replace('/[^a-zA-Z0-9]/', '-', strtolower($title)), 0, 30);
+            $sanitized_title = trim($sanitized_title, '-');
+            if (!empty($sanitized_title)) {
+                $tag_name .= '-' . $sanitized_title;
+            }
+        }
+
+        $git_tracker->create_tag($tag_name);
     }
 
     public function ajax_save_summary() {

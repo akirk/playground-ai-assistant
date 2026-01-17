@@ -168,6 +168,13 @@ final class AI_Assistant {
     public function executor() {
         return $this->executor;
     }
+
+    /**
+     * Get git tracker instance
+     */
+    public function git_tracker() {
+        return $this->git_tracker;
+    }
 }
 
 /**
