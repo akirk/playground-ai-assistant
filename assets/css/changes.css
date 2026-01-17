@@ -662,3 +662,10 @@
 .ai-commit-load-more {
     min-width: 120px;
 }
+
+.ai-commit-log-empty {
+    padding: 20px;
+    text-align: center;
+    color: #646970;
+    font-style: italic;
+}

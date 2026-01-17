@@ -228,6 +228,14 @@
                         $loadMoreBtn.remove();
                     }
 
+                    // Handle empty commits
+                    if (commits.length === 0 && !loadMore) {
+                        $list.append('<div class="ai-commit-log-empty">' +
+                            (aiChanges.strings.noCommits || 'No commits yet') + '</div>');
+                        $count.text('(0 commits)');
+                        return;
+                    }
+
                     // Render commits
                     commits.forEach(function(commit, index) {
                         var isFirst = self.commitOffset === 0 && index === 0;
@@ -274,7 +282,7 @@
                         '<span class="ai-commit-message">' + this.escapeHtml(commit.message) + '</span>' +
                     '</div>' +
                     '<div class="ai-commit-row-bottom">' +
-                        '<span class="ai-commit-date" title="' + commit.date + '">' + this.formatTimeAgo(commit.timestamp) + '</span>' +
+                        '<span class="ai-commit-date" title="' + this.escapeHtml(commit.date) + '">' + this.formatTimeAgo(commit.timestamp) + '</span>' +
                         revertButton +
                     '</div>' +
                 '</div>' +

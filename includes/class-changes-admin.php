@@ -94,6 +94,7 @@ class Changes_Admin {
                 'revertToHere' => __('Revert to here', 'ai-assistant'),
                 'revertToCommitTitle' => __('Revert files to this commit', 'ai-assistant'),
                 'justNow' => __('just now', 'ai-assistant'),
+                'noCommits' => __('No commits yet', 'ai-assistant'),
             ],
         ]);
     }
@@ -763,31 +764,5 @@ class Changes_Admin {
 
         echo $diff;
         exit;
-    }
-
-    /**
-     * Format a timestamp as a human-readable "time ago" string.
-     */
-    private function time_ago(?int $timestamp): string {
-        if ($timestamp === null) {
-            return '';
-        }
-
-        $diff = time() - $timestamp;
-
-        if ($diff < 60) {
-            return __('just now', 'ai-assistant');
-        } elseif ($diff < 3600) {
-            $mins = floor($diff / 60);
-            return sprintf(_n('%d min ago', '%d mins ago', $mins, 'ai-assistant'), $mins);
-        } elseif ($diff < 86400) {
-            $hours = floor($diff / 3600);
-            return sprintf(_n('%d hour ago', '%d hours ago', $hours, 'ai-assistant'), $hours);
-        } elseif ($diff < 604800) {
-            $days = floor($diff / 86400);
-            return sprintf(_n('%d day ago', '%d days ago', $days, 'ai-assistant'), $days);
-        } else {
-            return date('M j', $timestamp);
-        }
     }
 }
