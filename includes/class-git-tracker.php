@@ -11,6 +11,12 @@ if (!defined('ABSPATH')) {
  * Replaces CPT-based tracking with actual git structure.
  * Original files are stored as blobs in the index, working directory has modifications.
  * Download the wp-content folder, run `git diff` to see AI changes.
+ *
+ * SECURITY NOTE: This creates a .git directory inside wp-content which is typically
+ * web-accessible. This is acceptable for WordPress Playground where the environment
+ * is sandboxed and not externally accessible. For production WordPress installations,
+ * consider blocking access to .git via .htaccess/nginx rules, or storing the git
+ * directory outside the web root.
  */
 class Git_Tracker {
 
@@ -93,7 +99,10 @@ class Git_Tracker {
     }
 
     private function add_to_directory_list(array &$directories, string $path, string $change_type, array $info): void {
-        // Skip invalid/corrupted paths
+        // Skip invalid/corrupted paths:
+        // - Empty paths are invalid
+        // - Paths shorter than 3 chars can't be valid (minimum: "a/b" for dir/file structure)
+        // - Paths with null bytes indicate corrupted index data
         if (empty($path) || strlen($path) < 3 || strpos($path, "\0") !== false) {
             return;
         }

@@ -532,7 +532,10 @@ class Changes_Admin {
         if ($is_deleted) {
             return [
                 'tool' => 'delete_file',
-                'arguments' => ['path' => $path],
+                'arguments' => [
+                    'path' => $path,
+                    'reason' => 'Imported from patch file',
+                ],
             ];
         }
 
@@ -543,6 +546,7 @@ class Changes_Admin {
                 'arguments' => [
                     'path' => $path,
                     'content' => $content,
+                    'reason' => 'Imported from patch file',
                 ],
             ];
         }
@@ -565,6 +569,7 @@ class Changes_Admin {
             'arguments' => [
                 'path' => $path,
                 'content' => $new_content,
+                'reason' => 'Imported from patch file',
             ],
         ];
     }
