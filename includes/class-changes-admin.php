@@ -169,18 +169,22 @@ class Changes_Admin {
                 <div class="ai-commit-log-list" style="display: none;">
                     <?php foreach ($commits as $index => $commit): ?>
                     <div class="ai-commit-row<?php echo $index === 0 ? ' ai-commit-current' : ''; ?>" data-sha="<?php echo esc_attr($commit['sha']); ?>">
-                        <span class="ai-commit-sha"><?php echo esc_html($commit['short_sha']); ?></span>
-                        <span class="ai-commit-message"><?php echo esc_html($commit['message']); ?></span>
-                        <span class="ai-commit-date" title="<?php echo esc_attr($commit['date']); ?>">
-                            <?php echo esc_html($this->time_ago($commit['timestamp'])); ?>
-                        </span>
-                        <?php if ($index > 0): ?>
-                        <button type="button" class="button button-small ai-revert-to-commit" data-sha="<?php echo esc_attr($commit['sha']); ?>" title="<?php esc_attr_e('Revert files to this commit', 'ai-assistant'); ?>">
-                            <?php esc_html_e('Revert to here', 'ai-assistant'); ?>
-                        </button>
-                        <?php else: ?>
-                        <span class="ai-commit-label"><?php esc_html_e('(current)', 'ai-assistant'); ?></span>
-                        <?php endif; ?>
+                        <div class="ai-commit-row-top">
+                            <span class="ai-commit-sha"><?php echo esc_html($commit['short_sha']); ?></span>
+                            <span class="ai-commit-message"><?php echo esc_html($commit['message']); ?></span>
+                        </div>
+                        <div class="ai-commit-row-bottom">
+                            <span class="ai-commit-date" title="<?php echo esc_attr($commit['date']); ?>">
+                                <?php echo esc_html($this->time_ago($commit['timestamp'])); ?>
+                            </span>
+                            <?php if ($index > 0): ?>
+                            <button type="button" class="button button-small ai-revert-to-commit" data-sha="<?php echo esc_attr($commit['sha']); ?>" title="<?php esc_attr_e('Revert files to this commit', 'ai-assistant'); ?>">
+                                <?php esc_html_e('Revert to here', 'ai-assistant'); ?>
+                            </button>
+                            <?php else: ?>
+                            <span class="ai-commit-label"><?php esc_html_e('(current)', 'ai-assistant'); ?></span>
+                            <?php endif; ?>
+                        </div>
                     </div>
                     <?php endforeach; ?>
                 </div>

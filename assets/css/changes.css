@@ -485,8 +485,8 @@
 
 .ai-commit-row {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    gap: 4px;
     padding: 10px 16px;
     border-bottom: 1px solid #f0f0f1;
 }
@@ -507,6 +507,12 @@
     background: #e5f1f9;
 }
 
+.ai-commit-row-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .ai-commit-sha {
     font-family: Consolas, Monaco, 'Andale Mono', monospace;
     font-size: 12px;
@@ -521,29 +527,28 @@
     flex: 1;
     font-size: 13px;
     color: #1d2327;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
+    word-break: break-word;
+}
+
+.ai-commit-row-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 0;
 }
 
 .ai-commit-date {
     color: #646970;
     font-size: 12px;
-    flex-shrink: 0;
-    min-width: 80px;
-    text-align: right;
 }
 
 .ai-commit-label {
     color: #646970;
     font-size: 11px;
     font-style: italic;
-    flex-shrink: 0;
 }
 
 .ai-revert-to-commit {
-    flex-shrink: 0;
     padding: 2px 8px !important;
     font-size: 11px !important;
     min-height: 0 !important;
