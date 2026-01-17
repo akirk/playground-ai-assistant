@@ -49,7 +49,7 @@ class Git_Tracker {
                 $this->add_created_file($relative_path);
             }
             // Update ai-changes branch with current file content
-            $this->update_ai_changes_branch($relative_path, $reason);
+            $this->update_ai_changes_branch($reason);
             return true;
         }
 
@@ -64,7 +64,7 @@ class Git_Tracker {
         }
 
         // Update ai-changes branch with current file content
-        $this->update_ai_changes_branch($relative_path, $reason);
+        $this->update_ai_changes_branch($reason);
 
         return true;
     }
@@ -865,7 +865,7 @@ class Git_Tracker {
     /**
      * Update the ai-changes branch with current working directory state of tracked files.
      */
-    private function update_ai_changes_branch(string $changed_path = '', string $reason = ''): void {
+    private function update_ai_changes_branch(string $reason = ''): void {
         $entries = $this->read_index();
         $created = $this->get_created_files();
 
@@ -906,11 +906,8 @@ class Git_Tracker {
             $parent = trim(file_get_contents($ref_path));
         }
 
-        // Build commit message from path and reason
+        // Use reason as commit message
         $message = $reason ?: 'AI modification';
-        if ($changed_path) {
-            $message = $changed_path . ': ' . $message;
-        }
 
         $commit_sha = $this->write_commit($tree_sha, $parent, $message);
 
