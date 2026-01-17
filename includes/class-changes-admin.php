@@ -24,6 +24,8 @@ class Changes_Admin {
         add_action('wp_ajax_ai_assistant_reapply_file', [$this, 'ajax_reapply_file']);
         add_action('wp_ajax_ai_assistant_revert_files', [$this, 'ajax_revert_files']);
         add_action('wp_ajax_ai_assistant_lint_php', [$this, 'ajax_lint_php']);
+        add_action('wp_ajax_ai_assistant_get_commit_log', [$this, 'ajax_get_commit_log']);
+        add_action('wp_ajax_ai_assistant_revert_to_commit', [$this, 'ajax_revert_to_commit']);
         add_action('admin_action_ai_assistant_download_diff', [$this, 'handle_diff_download']);
     }
 
@@ -82,6 +84,9 @@ class Changes_Admin {
                 'nothingToRevert' => __('No files to revert in this directory.', 'ai-assistant'),
                 'syntaxError' => __('Syntax Error', 'ai-assistant'),
                 'syntaxOk' => __('Syntax OK', 'ai-assistant'),
+                'confirmRevertToCommit' => __('Are you sure you want to revert all files to this commit? This will restore files to how they were at that point.', 'ai-assistant'),
+                'revertingToCommit' => __('Reverting...', 'ai-assistant'),
+                'revertToCommitError' => __('Failed to revert to commit.', 'ai-assistant'),
             ],
         ]);
     }
@@ -130,7 +135,9 @@ class Changes_Admin {
 
     public function render_page(): void {
         $directories = $this->git_tracker->get_changes_by_directory();
+        $commits = $this->git_tracker->get_commit_log(50);
         $has_changes = !empty($directories);
+        $has_commits = !empty($commits);
         ?>
         <div class="wrap ai-changes-wrap">
             <h1><?php esc_html_e('AI Changes', 'ai-assistant'); ?></h1>
@@ -151,6 +158,34 @@ class Changes_Admin {
                     <?php esc_html_e('Clear History', 'ai-assistant'); ?>
                 </button>
             </div>
+
+            <?php if ($has_commits): ?>
+            <div class="ai-commit-log">
+                <div class="ai-commit-log-header">
+                    <span class="ai-commit-log-toggle">▶</span>
+                    <strong><?php esc_html_e('Commit History', 'ai-assistant'); ?></strong>
+                    <span class="ai-commit-log-count">(<?php echo count($commits); ?> <?php echo count($commits) === 1 ? 'commit' : 'commits'; ?>)</span>
+                </div>
+                <div class="ai-commit-log-list" style="display: none;">
+                    <?php foreach ($commits as $index => $commit): ?>
+                    <div class="ai-commit-row<?php echo $index === 0 ? ' ai-commit-current' : ''; ?>" data-sha="<?php echo esc_attr($commit['sha']); ?>">
+                        <span class="ai-commit-sha"><?php echo esc_html($commit['short_sha']); ?></span>
+                        <span class="ai-commit-message"><?php echo esc_html($commit['message']); ?></span>
+                        <span class="ai-commit-date" title="<?php echo esc_attr($commit['date']); ?>">
+                            <?php echo esc_html($this->time_ago($commit['timestamp'])); ?>
+                        </span>
+                        <?php if ($index > 0): ?>
+                        <button type="button" class="button button-small ai-revert-to-commit" data-sha="<?php echo esc_attr($commit['sha']); ?>" title="<?php esc_attr_e('Revert files to this commit', 'ai-assistant'); ?>">
+                            <?php esc_html_e('Revert to here', 'ai-assistant'); ?>
+                        </button>
+                        <?php else: ?>
+                        <span class="ai-commit-label"><?php esc_html_e('(current)', 'ai-assistant'); ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <div class="ai-changes-tree">
                 <?php foreach ($directories as $dir => $data): ?>
@@ -498,6 +533,46 @@ class Changes_Admin {
         }
     }
 
+    public function ajax_get_commit_log(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 50;
+        $commits = $this->git_tracker->get_commit_log($limit);
+
+        wp_send_json_success(['commits' => $commits]);
+    }
+
+    public function ajax_revert_to_commit(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $sha = isset($_POST['sha']) ? sanitize_text_field($_POST['sha']) : '';
+
+        if (empty($sha) || !preg_match('/^[a-f0-9]{40}$/', $sha)) {
+            wp_send_json_error(['message' => 'Invalid commit SHA']);
+        }
+
+        $result = $this->git_tracker->revert_to_commit($sha);
+
+        if ($result['success']) {
+            wp_send_json_success([
+                'reverted' => $result['reverted'],
+                'message' => sprintf(__('%d file(s) reverted to commit %s.', 'ai-assistant'), count($result['reverted']), substr($sha, 0, 7)),
+            ]);
+        } else {
+            wp_send_json_error([
+                'message' => implode(', ', $result['errors']),
+            ]);
+        }
+    }
+
     private function parse_patch(string $patch): array {
         $operations = [];
         $blocks = preg_split('/^diff --git /m', $patch);
@@ -678,5 +753,31 @@ class Changes_Admin {
 
         echo $diff;
         exit;
+    }
+
+    /**
+     * Format a timestamp as a human-readable "time ago" string.
+     */
+    private function time_ago(?int $timestamp): string {
+        if ($timestamp === null) {
+            return '';
+        }
+
+        $diff = time() - $timestamp;
+
+        if ($diff < 60) {
+            return __('just now', 'ai-assistant');
+        } elseif ($diff < 3600) {
+            $mins = floor($diff / 60);
+            return sprintf(_n('%d min ago', '%d mins ago', $mins, 'ai-assistant'), $mins);
+        } elseif ($diff < 86400) {
+            $hours = floor($diff / 3600);
+            return sprintf(_n('%d hour ago', '%d hours ago', $hours, 'ai-assistant'), $hours);
+        } elseif ($diff < 604800) {
+            $days = floor($diff / 86400);
+            return sprintf(_n('%d day ago', '%d days ago', $days, 'ai-assistant'), $days);
+        } else {
+            return date('M j', $timestamp);
+        }
     }
 }

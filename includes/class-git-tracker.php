@@ -374,6 +374,185 @@ class Git_Tracker {
         return !empty($entries) || !empty($created);
     }
 
+    /**
+     * Get the commit log from the ai-changes branch.
+     *
+     * @param int $limit Maximum number of commits to return.
+     * @return array List of commits with sha, message, timestamp, and files_changed.
+     */
+    public function get_commit_log(int $limit = 50): array {
+        if (!$this->is_active()) {
+            return [];
+        }
+
+        $ref_path = $this->git_dir . '/refs/heads/ai-changes';
+        if (!file_exists($ref_path)) {
+            return [];
+        }
+
+        $commits = [];
+        $sha = trim(file_get_contents($ref_path));
+
+        while ($sha && count($commits) < $limit) {
+            $commit_data = $this->read_object($sha);
+            if ($commit_data === null || $commit_data['type'] !== 'commit') {
+                break;
+            }
+
+            $content = $commit_data['content'];
+
+            // Parse commit fields
+            $tree = null;
+            $parent = null;
+            $timestamp = null;
+            $message = '';
+
+            $lines = explode("\n", $content);
+            $in_message = false;
+
+            foreach ($lines as $line) {
+                if ($in_message) {
+                    $message .= ($message ? "\n" : '') . $line;
+                } elseif ($line === '') {
+                    $in_message = true;
+                } elseif (strpos($line, 'tree ') === 0) {
+                    $tree = substr($line, 5);
+                } elseif (strpos($line, 'parent ') === 0) {
+                    $parent = substr($line, 7);
+                } elseif (strpos($line, 'author ') === 0) {
+                    // Parse timestamp from "author Name <email> timestamp timezone"
+                    if (preg_match('/(\d+)\s+[+-]\d{4}$/', $line, $m)) {
+                        $timestamp = (int) $m[1];
+                    }
+                }
+            }
+
+            $commits[] = [
+                'sha' => $sha,
+                'short_sha' => substr($sha, 0, 7),
+                'tree' => $tree,
+                'parent' => $parent,
+                'message' => trim($message),
+                'timestamp' => $timestamp,
+                'date' => $timestamp ? date('Y-m-d H:i:s', $timestamp) : null,
+            ];
+
+            $sha = $parent;
+        }
+
+        return $commits;
+    }
+
+    /**
+     * Revert all files to the state at a specific commit.
+     *
+     * This restores files to how they were at the given commit on ai-changes branch,
+     * but does NOT reset the commit history (commits after this point are preserved
+     * for potential reapply).
+     *
+     * @param string $target_sha The commit SHA to revert to.
+     * @return array Result with 'success', 'reverted' files, and any 'errors'.
+     */
+    public function revert_to_commit(string $target_sha): array {
+        if (!$this->is_active()) {
+            return ['success' => false, 'errors' => ['Tracking not active']];
+        }
+
+        $commit_data = $this->read_object($target_sha);
+        if ($commit_data === null || $commit_data['type'] !== 'commit') {
+            return ['success' => false, 'errors' => ['Invalid commit SHA']];
+        }
+
+        // Get tree SHA from commit
+        if (!preg_match('/^tree ([a-f0-9]{40})/m', $commit_data['content'], $matches)) {
+            return ['success' => false, 'errors' => ['Could not parse commit tree']];
+        }
+        $target_tree = $matches[1];
+
+        // Get all files from target commit's tree
+        $target_files = $this->get_tree_files($target_tree, '');
+
+        // Get current tracked files
+        $entries = $this->read_index();
+        $created = $this->get_created_files();
+        $all_tracked = array_merge(array_keys($entries), $created);
+
+        $reverted = [];
+        $errors = [];
+
+        // Revert each tracked file
+        foreach ($all_tracked as $path) {
+            $full_path = $this->work_tree . '/' . $path;
+
+            if (isset($target_files[$path])) {
+                // File exists in target commit - restore that version
+                $content = $this->read_blob($target_files[$path]);
+                if ($content !== null) {
+                    $dir = dirname($full_path);
+                    if (!is_dir($dir)) {
+                        mkdir($dir, 0755, true);
+                    }
+                    file_put_contents($full_path, $content);
+                    $reverted[] = $path;
+                } else {
+                    $errors[] = "Could not read content for: $path";
+                }
+            } else {
+                // File doesn't exist in target commit
+                // If it's a created file, delete it; if modified, restore original
+                if (in_array($path, $created)) {
+                    if (file_exists($full_path)) {
+                        unlink($full_path);
+                        $reverted[] = $path;
+                    }
+                } elseif (isset($entries[$path])) {
+                    // Restore from main branch (original)
+                    $original = $this->read_blob($entries[$path]['sha']);
+                    if ($original !== null) {
+                        file_put_contents($full_path, $original);
+                        $reverted[] = $path;
+                    }
+                }
+            }
+        }
+
+        return [
+            'success' => empty($errors),
+            'reverted' => $reverted,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Recursively get all files from a tree object.
+     *
+     * @param string $tree_sha The tree SHA to read.
+     * @param string $prefix Path prefix for recursion.
+     * @return array Map of path => blob SHA.
+     */
+    private function get_tree_files(string $tree_sha, string $prefix): array {
+        $tree_data = $this->read_object($tree_sha);
+        if ($tree_data === null || $tree_data['type'] !== 'tree') {
+            return [];
+        }
+
+        $files = [];
+        $entries = $this->parse_tree($tree_data['content']);
+
+        foreach ($entries as $entry) {
+            $path = $prefix ? $prefix . '/' . $entry['name'] : $entry['name'];
+            if ($entry['mode'] === '40000') {
+                // Directory - recurse
+                $files = array_merge($files, $this->get_tree_files($entry['sha'], $path));
+            } else {
+                // File
+                $files[$path] = $entry['sha'];
+            }
+        }
+
+        return $files;
+    }
+
     // -------------------------------------------------------------------------
     // Private: Git structure management
     // -------------------------------------------------------------------------

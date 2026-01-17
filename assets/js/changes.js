@@ -118,6 +118,25 @@
                 var dir = $(this).data('dir');
                 self.revertDirectory(dir, $(this));
             });
+
+            // Commit log toggle
+            $(document).on('click', '.ai-commit-log-header', function(e) {
+                e.preventDefault();
+                var $list = $(this).siblings('.ai-commit-log-list');
+                var $toggle = $(this).find('.ai-commit-log-toggle');
+                var willBeVisible = !$list.is(':visible');
+
+                $toggle.text(willBeVisible ? '▼' : '▶');
+                $list.slideToggle(200);
+            });
+
+            // Revert to commit
+            $(document).on('click', '.ai-revert-to-commit', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var sha = $(this).data('sha');
+                self.revertToCommit(sha, $(this));
+            });
         },
 
         showPreviewPanel: function() {
@@ -463,6 +482,33 @@
                 $button.text(originalText).prop('disabled', false);
             }).fail(function() {
                 alert(aiChanges.strings.revertError);
+                $button.text(originalText).prop('disabled', false);
+            });
+        },
+
+        revertToCommit: function(sha, $button) {
+            if (!confirm(aiChanges.strings.confirmRevertToCommit)) {
+                return;
+            }
+
+            var self = this;
+            var originalText = $button.text();
+            $button.text(aiChanges.strings.revertingToCommit).prop('disabled', true);
+
+            $.post(aiChanges.ajaxUrl, {
+                action: 'ai_assistant_revert_to_commit',
+                nonce: aiChanges.nonce,
+                sha: sha
+            }, function(response) {
+                if (response.success) {
+                    // Reload the page to show updated state
+                    location.reload();
+                } else {
+                    alert(response.data.message || aiChanges.strings.revertToCommitError);
+                    $button.text(originalText).prop('disabled', false);
+                }
+            }).fail(function() {
+                alert(aiChanges.strings.revertToCommitError);
                 $button.text(originalText).prop('disabled', false);
             });
         },

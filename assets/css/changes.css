@@ -442,3 +442,110 @@
 .ai-import-section #ai-import-patch {
     min-width: 150px;
 }
+
+/* Commit Log */
+.ai-commit-log {
+    margin-bottom: 16px;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+}
+
+.ai-commit-log-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #f6f7f7;
+    cursor: pointer;
+    user-select: none;
+}
+
+.ai-commit-log-header:hover {
+    background: #f0f0f1;
+}
+
+.ai-commit-log-toggle {
+    font-size: 10px;
+    color: #646970;
+    width: 12px;
+}
+
+.ai-commit-log-count {
+    color: #646970;
+    font-weight: 400;
+    font-size: 13px;
+}
+
+.ai-commit-log-list {
+    border-top: 1px solid #e2e4e7;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.ai-commit-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.ai-commit-row:last-child {
+    border-bottom: none;
+}
+
+.ai-commit-row:hover {
+    background: #f9f9f9;
+}
+
+.ai-commit-current {
+    background: #f0f7fc;
+}
+
+.ai-commit-current:hover {
+    background: #e5f1f9;
+}
+
+.ai-commit-sha {
+    font-family: Consolas, Monaco, 'Andale Mono', monospace;
+    font-size: 12px;
+    color: #2271b1;
+    background: #f0f0f1;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.ai-commit-message {
+    flex: 1;
+    font-size: 13px;
+    color: #1d2327;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.ai-commit-date {
+    color: #646970;
+    font-size: 12px;
+    flex-shrink: 0;
+    min-width: 80px;
+    text-align: right;
+}
+
+.ai-commit-label {
+    color: #646970;
+    font-size: 11px;
+    font-style: italic;
+    flex-shrink: 0;
+}
+
+.ai-revert-to-commit {
+    flex-shrink: 0;
+    padding: 2px 8px !important;
+    font-size: 11px !important;
+    min-height: 0 !important;
+    line-height: 1.4 !important;
+}
