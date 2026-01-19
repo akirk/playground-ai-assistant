@@ -271,10 +271,22 @@
         },
 
         renderCommitRow: function(commit, isFirst) {
+            var self = this;
             var revertButton = isFirst
                 ? '<span class="ai-commit-label">' + (aiChanges.strings.current || '(current)') + '</span>'
                 : '<button type="button" class="button button-small ai-revert-to-commit" data-sha="' + commit.sha + '" title="' + (aiChanges.strings.revertToCommitTitle || 'Revert files to this commit') + '">' +
                   (aiChanges.strings.revertToHere || 'Revert to here') + '</button>';
+
+            // Render tags if present
+            var tagsHtml = '';
+            if (commit.tags && commit.tags.length > 0) {
+                tagsHtml = '<span class="ai-commit-tags">';
+                commit.tags.forEach(function(tag) {
+                    tagsHtml += '<span class="ai-commit-tag" title="' + self.escapeHtml(tag) + '">' +
+                        self.formatTagName(tag) + '</span>';
+                });
+                tagsHtml += '</span>';
+            }
 
             return '<div class="ai-commit-entry">' +
                 '<div class="ai-commit-row' + (isFirst ? ' ai-commit-current' : '') + '" data-sha="' + commit.sha + '">' +
@@ -282,6 +294,7 @@
                         '<button type="button" class="ai-commit-diff-toggle" data-sha="' + commit.sha + '" title="' + __('Preview diff', 'ai-assistant') + '">▶</button>' +
                         '<span class="ai-commit-sha">' + commit.short_sha + '</span>' +
                         '<span class="ai-commit-message">' + this.escapeHtml(commit.message) + '</span>' +
+                        tagsHtml +
                     '</div>' +
                     '<div class="ai-commit-row-bottom">' +
                         '<span class="ai-commit-date" title="' + this.escapeHtml(commit.date) + '">' + this.formatTimeAgo(commit.timestamp) + '</span>' +
@@ -292,6 +305,30 @@
                     '<pre><code></code></pre>' +
                 '</div>' +
             '</div>';
+        },
+
+        formatTagName: function(tag) {
+            // Format conversation tag: conv-{id}-{timestamp}-{title} -> "Title"
+            // The full tag with timestamp is shown in the tooltip
+            if (tag.indexOf('conv-') === 0) {
+                var parts = tag.substring(5).split('-');
+                // Remove conversation ID (first part, numeric)
+                if (parts.length > 0 && /^\d+$/.test(parts[0])) {
+                    parts.shift();
+                }
+                // Remove timestamp (second part, 10-digit number)
+                if (parts.length > 0 && /^\d{10}$/.test(parts[0])) {
+                    parts.shift();
+                }
+                // Capitalize remaining words (the title)
+                if (parts.length > 0) {
+                    return parts.map(function(word) {
+                        return word.charAt(0).toUpperCase() + word.slice(1);
+                    }).join(' ');
+                }
+                return tag;
+            }
+            return tag;
         },
 
         escapeHtml: function(text) {

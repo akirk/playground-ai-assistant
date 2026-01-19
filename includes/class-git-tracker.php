@@ -374,6 +374,113 @@ class Git_Tracker {
         return !empty($entries) || !empty($created);
     }
 
+    // -------------------------------------------------------------------------
+    // Public: Tag operations
+    // -------------------------------------------------------------------------
+
+    /**
+     * Create a tag pointing to a commit.
+     *
+     * @param string $name Tag name.
+     * @param string|null $sha Commit SHA to tag. Defaults to HEAD of ai-changes branch.
+     * @return bool True if tag was created.
+     */
+    public function create_tag(string $name, ?string $sha = null): bool {
+        if (!$this->is_active()) {
+            return false;
+        }
+
+        // Sanitize tag name
+        $name = preg_replace('/[^a-zA-Z0-9_\-]/', '-', $name);
+        if (empty($name)) {
+            return false;
+        }
+
+        // Default to ai-changes HEAD
+        if ($sha === null) {
+            $ref_path = $this->git_dir . '/refs/heads/ai-changes';
+            if (!file_exists($ref_path)) {
+                return false;
+            }
+            $sha = trim(file_get_contents($ref_path));
+        }
+
+        // Validate commit exists
+        $commit_data = $this->read_object($sha);
+        if ($commit_data === null || $commit_data['type'] !== 'commit') {
+            return false;
+        }
+
+        // Create tags directory if needed
+        $tags_dir = $this->git_dir . '/refs/tags';
+        if (!is_dir($tags_dir)) {
+            mkdir($tags_dir, 0755, true);
+        }
+
+        // Write tag reference
+        file_put_contents($tags_dir . '/' . $name, $sha . "\n");
+
+        return true;
+    }
+
+    /**
+     * Get all tags.
+     *
+     * @return array Map of tag name => commit SHA.
+     */
+    public function get_tags(): array {
+        $tags_dir = $this->git_dir . '/refs/tags';
+        if (!is_dir($tags_dir)) {
+            return [];
+        }
+
+        $tags = [];
+        foreach (scandir($tags_dir) as $file) {
+            if ($file === '.' || $file === '..') {
+                continue;
+            }
+            $sha = trim(file_get_contents($tags_dir . '/' . $file));
+            if (preg_match('/^[a-f0-9]{40}$/', $sha)) {
+                $tags[$file] = $sha;
+            }
+        }
+
+        return $tags;
+    }
+
+    /**
+     * Get tags pointing to a specific commit.
+     *
+     * @param string $sha Commit SHA.
+     * @return array List of tag names.
+     */
+    public function get_tags_for_commit(string $sha): array {
+        $all_tags = $this->get_tags();
+        $matching = [];
+
+        foreach ($all_tags as $name => $tag_sha) {
+            if ($tag_sha === $sha) {
+                $matching[] = $name;
+            }
+        }
+
+        return $matching;
+    }
+
+    /**
+     * Delete a tag.
+     *
+     * @param string $name Tag name.
+     * @return bool True if tag was deleted.
+     */
+    public function delete_tag(string $name): bool {
+        $tag_path = $this->git_dir . '/refs/tags/' . $name;
+        if (!file_exists($tag_path)) {
+            return false;
+        }
+        return unlink($tag_path);
+    }
+
     /**
      * Get the commit log from the ai-changes branch.
      *
@@ -389,6 +496,16 @@ class Git_Tracker {
         $ref_path = $this->git_dir . '/refs/heads/ai-changes';
         if (!file_exists($ref_path)) {
             return ['commits' => [], 'has_more' => false];
+        }
+
+        // Pre-load all tags for efficient lookup
+        $all_tags = $this->get_tags();
+        $tags_by_sha = [];
+        foreach ($all_tags as $name => $tag_sha) {
+            if (!isset($tags_by_sha[$tag_sha])) {
+                $tags_by_sha[$tag_sha] = [];
+            }
+            $tags_by_sha[$tag_sha][] = $name;
         }
 
         $commits = [];
@@ -444,6 +561,7 @@ class Git_Tracker {
                 'message' => trim($message),
                 'timestamp' => $timestamp,
                 'date' => $timestamp ? date('Y-m-d H:i:s', $timestamp) : null,
+                'tags' => $tags_by_sha[$sha] ?? [],
             ];
 
             $sha = $parent;

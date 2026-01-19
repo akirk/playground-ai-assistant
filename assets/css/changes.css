@@ -669,3 +669,37 @@
     color: #646970;
     font-style: italic;
 }
+
+/* Conversation tags */
+.ai-commit-tags {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+.ai-commit-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: #1e4620;
+    background: #d4edda;
+    border-radius: 10px;
+    white-space: nowrap;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 782px) {
+    .ai-commit-tags {
+        display: block;
+        margin: 4px 0 0 24px;
+    }
+
+    .ai-commit-tag {
+        max-width: 100%;
+    }
+}
