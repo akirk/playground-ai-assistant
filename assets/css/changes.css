@@ -442,3 +442,230 @@
 .ai-import-section #ai-import-patch {
     min-width: 150px;
 }
+
+/* Commit Log */
+.ai-commit-log {
+    margin-bottom: 16px;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+}
+
+.ai-commit-log-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #f6f7f7;
+    cursor: pointer;
+    user-select: none;
+}
+
+.ai-commit-log-header:hover {
+    background: #f0f0f1;
+}
+
+.ai-commit-log-toggle {
+    font-size: 10px;
+    color: #646970;
+    width: 12px;
+}
+
+.ai-commit-log-count {
+    color: #646970;
+    font-weight: 400;
+    font-size: 13px;
+}
+
+.ai-commit-log-list {
+    border-top: 1px solid #e2e4e7;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.ai-commit-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 16px;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.ai-commit-row:last-child {
+    border-bottom: none;
+}
+
+.ai-commit-row:hover {
+    background: #f9f9f9;
+}
+
+.ai-commit-current {
+    background: #f0f7fc;
+}
+
+.ai-commit-current:hover {
+    background: #e5f1f9;
+}
+
+.ai-commit-row-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ai-commit-sha {
+    font-family: Consolas, Monaco, 'Andale Mono', monospace;
+    font-size: 12px;
+    color: #2271b1;
+    background: #f0f0f1;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.ai-commit-message {
+    flex: 1;
+    font-size: 13px;
+    color: #1d2327;
+    word-break: break-word;
+}
+
+.ai-commit-row-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 0;
+}
+
+.ai-commit-date {
+    color: #646970;
+    font-size: 12px;
+}
+
+.ai-commit-label {
+    color: #646970;
+    font-size: 11px;
+    font-style: italic;
+}
+
+.ai-revert-to-commit {
+    padding: 2px 8px !important;
+    font-size: 11px !important;
+    min-height: 0 !important;
+    line-height: 1.4 !important;
+}
+
+.ai-commit-diff-toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-size: 10px;
+    color: #646970;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 14px;
+}
+
+.ai-commit-diff-toggle:hover {
+    color: #2271b1;
+}
+
+.ai-commit-diff-toggle.expanded {
+    color: #2271b1;
+}
+
+.ai-commit-entry {
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.ai-commit-entry:last-child {
+    border-bottom: none;
+}
+
+.ai-commit-entry .ai-commit-row {
+    border-bottom: none;
+}
+
+.ai-commit-diff-preview {
+    margin: 0 16px 12px 28px;
+    background: #f6f7f7;
+    border: 1px solid #e2e4e7;
+    border-radius: 3px;
+    max-height: 300px;
+    overflow: auto;
+}
+
+.ai-commit-diff-preview pre {
+    margin: 0;
+    padding: 10px 12px;
+    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.ai-commit-diff-preview code {
+    background: none;
+    padding: 0;
+    white-space: pre;
+    display: block;
+}
+
+.ai-commit-diff-preview .diff-header {
+    color: #2271b1;
+    font-weight: 600;
+}
+
+.ai-commit-diff-preview .diff-file {
+    color: #50575e;
+}
+
+.ai-commit-diff-preview .diff-hunk {
+    color: #9a6700;
+    margin-top: 4px;
+}
+
+.ai-commit-diff-preview .diff-add {
+    color: #007017;
+    background: #d4edda;
+}
+
+.ai-commit-diff-preview .diff-del {
+    color: #8a1f1f;
+    background: #f8d7da;
+}
+
+.ai-commit-diff-preview .loading,
+.ai-commit-diff-preview .error {
+    color: #646970;
+    padding: 12px;
+    text-align: center;
+    display: block;
+}
+
+.ai-commit-diff-preview .error {
+    color: #8a1f1f;
+}
+
+.ai-commit-log-loading {
+    padding: 20px;
+    text-align: center;
+    color: #646970;
+}
+
+.ai-commit-load-more-wrap {
+    padding: 12px 16px;
+    text-align: center;
+    border-top: 1px solid #f0f0f1;
+}
+
+.ai-commit-load-more {
+    min-width: 120px;
+}
+
+.ai-commit-log-empty {
+    padding: 20px;
+    text-align: center;
+    color: #646970;
+    font-style: italic;
+}
