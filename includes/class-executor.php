@@ -12,12 +12,12 @@ class Executor {
 
     private $tools;
     private $wp_content_path;
-    private $change_tracker;
+    private $git_tracker;
 
-    public function __construct(Tools $tools, ?Change_Tracker $change_tracker = null) {
+    public function __construct(Tools $tools, ?Git_Tracker $git_tracker = null) {
         $this->tools = $tools;
         $this->wp_content_path = WP_CONTENT_DIR;
-        $this->change_tracker = $change_tracker;
+        $this->git_tracker = $git_tracker;
     }
 
     /**
@@ -48,13 +48,17 @@ class Executor {
             case 'write_file':
                 $path = $this->get_string_arg($arguments, 'path', $tool_name);
                 $content = $this->get_content_arg($arguments, 'content', $tool_name);
-                return $this->write_file($path, $content);
+                $reason = $this->get_string_arg($arguments, 'reason', $tool_name);
+                return $this->write_file($path, $content, $reason);
             case 'edit_file':
                 $path = $this->get_string_arg($arguments, 'path', $tool_name);
                 $edits = $this->get_array_arg($arguments, 'edits', $tool_name);
-                return $this->edit_file($path, $edits);
+                $reason = $this->get_string_arg($arguments, 'reason', $tool_name);
+                return $this->edit_file($path, $edits, $reason);
             case 'delete_file':
-                return $this->delete_file($this->get_string_arg($arguments, 'path', $tool_name));
+                $path = $this->get_string_arg($arguments, 'path', $tool_name);
+                $reason = $this->get_string_arg($arguments, 'reason', $tool_name);
+                return $this->delete_file($path, $reason);
             case 'list_directory':
                 return $this->list_directory($this->get_string_arg($arguments, 'path', $tool_name));
             case 'search_files':
@@ -157,8 +161,6 @@ class Executor {
         // Build full path
         $full_path = $this->wp_content_path . '/' . $relative_path;
 
-        error_log('[AI Assistant] resolve_path: relative=' . $relative_path . ', full=' . $full_path);
-
         // Resolve real path (handles ../ etc)
         $real_path = realpath(dirname($full_path));
         if ($real_path === false) {
@@ -171,7 +173,6 @@ class Executor {
         }
 
         $wp_content_real = realpath($this->wp_content_path);
-        error_log('[AI Assistant] resolve_path: real_path=' . ($real_path ?: 'false') . ', wp_content=' . $wp_content_real);
 
         // Security check: ensure path is within wp-content
         if ($real_path === false) {
@@ -213,7 +214,7 @@ class Executor {
         ];
     }
 
-    private function write_file(string $path, string $content): array {
+    private function write_file(string $path, string $content, string $reason): array {
         $full_path = $this->resolve_path($path);
 
         // Create directory if needed
@@ -227,13 +228,13 @@ class Executor {
         $existed = file_exists($full_path);
         $old_content = $existed ? file_get_contents($full_path) : null;
 
-        // Track change before writing
-        if ($this->change_tracker) {
-            $this->change_tracker->track_change($path, $existed ? 'modified' : 'created', $old_content);
-        }
-
         if (file_put_contents($full_path, $content) === false) {
             throw new \Exception("Failed to write file: $path");
+        }
+
+        // Track change in git (after file is written so ai-changes branch captures new content)
+        if ($this->git_tracker) {
+            $this->git_tracker->track_change($path, $existed ? 'modified' : 'created', $old_content, $reason);
         }
 
         // Track if this is a plugin modification
@@ -247,7 +248,7 @@ class Executor {
         ];
     }
 
-    private function edit_file(string $path, array $edits): array {
+    private function edit_file(string $path, array $edits, string $reason): array {
         $full_path = $this->resolve_path($path);
 
         if (!file_exists($full_path)) {
@@ -261,10 +262,6 @@ class Executor {
 
         $original_content = $content;
 
-        // Track change before editing
-        if ($this->change_tracker) {
-            $this->change_tracker->track_change($path, 'modified', $original_content);
-        }
         $applied = [];
         $failed = [];
 
@@ -300,6 +297,12 @@ class Executor {
             if (file_put_contents($full_path, $content) === false) {
                 throw new \Exception("Failed to write file: $path");
             }
+
+            // Track change in git (after file is written so ai-changes branch captures new content)
+            if ($this->git_tracker) {
+                $this->git_tracker->track_change($path, 'modified', $original_content, $reason);
+            }
+
             // Track if this is a plugin modification
             $this->track_plugin_modification($path);
         }
@@ -315,17 +318,17 @@ class Executor {
         ];
     }
 
-    private function delete_file(string $path): array {
+    private function delete_file(string $path, string $reason): array {
         $full_path = $this->resolve_path($path);
 
         if (!file_exists($full_path)) {
             throw new \Exception("File not found: $path");
         }
 
-        // Track change before deleting
-        if ($this->change_tracker && !is_dir($full_path)) {
+        // Capture content before deletion
+        $original_content = null;
+        if (!is_dir($full_path)) {
             $original_content = file_get_contents($full_path);
-            $this->change_tracker->track_change($path, 'deleted', $original_content !== false ? $original_content : null);
         }
 
         if (is_dir($full_path)) {
@@ -335,6 +338,11 @@ class Executor {
             if (!unlink($full_path)) {
                 throw new \Exception("Failed to delete file: $path");
             }
+        }
+
+        // Track change in git (after file is deleted so ai-changes branch reflects deletion)
+        if ($this->git_tracker && $original_content !== null) {
+            $this->git_tracker->track_change($path, 'deleted', $original_content !== false ? $original_content : null, $reason);
         }
 
         return [

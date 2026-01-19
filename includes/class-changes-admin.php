@@ -7,12 +7,12 @@ if (!defined('ABSPATH')) {
 
 class Changes_Admin {
 
-    private $change_tracker;
+    private $git_tracker;
     private $executor;
 
-    public function __construct(Change_Tracker $change_tracker) {
-        $this->change_tracker = $change_tracker;
-        $this->executor = new Executor(new Tools(), $change_tracker);
+    public function __construct(Git_Tracker $git_tracker) {
+        $this->git_tracker = $git_tracker;
+        $this->executor = new Executor(new Tools(), $git_tracker);
         add_action('admin_menu', [$this, 'add_admin_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
         add_action('load-tools_page_ai-changes', [$this, 'add_help_tabs']);
@@ -129,7 +129,7 @@ class Changes_Admin {
     }
 
     public function render_page(): void {
-        $directories = $this->change_tracker->get_changes_by_directory();
+        $directories = $this->git_tracker->get_changes_by_directory();
         $has_changes = !empty($directories);
         ?>
         <div class="wrap ai-changes-wrap">
@@ -170,48 +170,35 @@ class Changes_Admin {
                     </div>
                     <div class="ai-changes-files" style="display: none;">
                         <?php foreach ($data['files'] as $file): ?>
-                        <?php $all_ids = isset($file['ids']) ? implode(',', $file['ids']) : $file['id']; ?>
                         <div class="ai-changes-file">
                             <div class="ai-changes-file-row">
-                                <button type="button" class="ai-file-preview-toggle" data-id="<?php echo esc_attr($file['id']); ?>" data-ids="<?php echo esc_attr($all_ids); ?>" title="<?php esc_attr_e('Preview diff', 'ai-assistant'); ?>">▶</button>
+                                <button type="button" class="ai-file-preview-toggle" data-path="<?php echo esc_attr($file['path']); ?>" title="<?php esc_attr_e('Preview diff', 'ai-assistant'); ?>">▶</button>
                                 <label>
                                     <input type="checkbox" class="ai-file-checkbox"
-                                           data-id="<?php echo esc_attr($file['id']); ?>"
-                                           data-ids="<?php echo esc_attr($all_ids); ?>"
+                                           data-path="<?php echo esc_attr($file['path']); ?>"
                                            data-dir="<?php echo esc_attr($dir); ?>">
                                     <span class="ai-changes-file-path"><?php echo esc_html($file['relative_path'] ?: basename($file['path'])); ?></span>
                                     <span class="ai-changes-type ai-changes-type-<?php echo esc_attr($file['change_type']); ?>">
                                         <?php echo esc_html(ucfirst($file['change_type'])); ?>
                                     </span>
-                                    <?php if (isset($file['patch_count']) && $file['patch_count'] > 1): ?>
-                                    <span class="ai-changes-patches" title="<?php esc_attr_e('Number of edits to this file', 'ai-assistant'); ?>">
-                                        <?php echo esc_html($file['patch_count']); ?> edits
-                                    </span>
-                                    <?php endif; ?>
-                                    <?php if ($file['is_reverted']): ?>
+                                    <?php if (!empty($file['is_reverted'])): ?>
                                     <span class="ai-changes-type ai-changes-type-reverted">
                                         <?php esc_html_e('Reverted', 'ai-assistant'); ?>
                                     </span>
                                     <?php endif; ?>
-                                    <?php if ($file['is_binary']): ?>
-                                    <span class="ai-changes-binary"><?php esc_html_e('Binary', 'ai-assistant'); ?></span>
-                                    <?php endif; ?>
-                                    <span class="ai-lint-status" data-id="<?php echo esc_attr($file['id']); ?>"></span>
-                                    <span class="ai-changes-date">
-                                        <?php echo esc_html(human_time_diff(strtotime($file['date']), current_time('timestamp')) . ' ago'); ?>
-                                    </span>
+                                    <span class="ai-lint-status" data-path="<?php echo esc_attr($file['path']); ?>"></span>
                                 </label>
-                                <?php if ($file['is_reverted']): ?>
-                                <button type="button" class="button button-small ai-reapply-file" data-id="<?php echo esc_attr($file['id']); ?>" title="<?php esc_attr_e('Reapply this change', 'ai-assistant'); ?>">
+                                <?php if (!empty($file['is_reverted'])): ?>
+                                <button type="button" class="button button-small ai-reapply-file" data-path="<?php echo esc_attr($file['path']); ?>" title="<?php esc_attr_e('Reapply this change', 'ai-assistant'); ?>">
                                     <?php esc_html_e('Reapply', 'ai-assistant'); ?>
                                 </button>
                                 <?php else: ?>
-                                <button type="button" class="button button-small ai-revert-file" data-id="<?php echo esc_attr($file['id']); ?>" data-ids="<?php echo esc_attr($all_ids); ?>" title="<?php esc_attr_e('Revert this change', 'ai-assistant'); ?>">
+                                <button type="button" class="button button-small ai-revert-file" data-path="<?php echo esc_attr($file['path']); ?>" title="<?php esc_attr_e('Revert this change', 'ai-assistant'); ?>">
                                     <?php esc_html_e('Revert', 'ai-assistant'); ?>
                                 </button>
                                 <?php endif; ?>
                             </div>
-                            <div class="ai-file-inline-preview" data-id="<?php echo esc_attr($file['id']); ?>" style="display: none;">
+                            <div class="ai-file-inline-preview" data-path="<?php echo esc_attr($file['path']); ?>" style="display: none;">
                                 <pre><code></code></pre>
                             </div>
                         </div>
@@ -257,7 +244,7 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $directories = $this->change_tracker->get_changes_by_directory();
+        $directories = $this->git_tracker->get_changes_by_directory();
         wp_send_json_success(['directories' => $directories]);
     }
 
@@ -268,13 +255,13 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $file_ids = isset($_POST['file_ids']) ? array_map('intval', (array) $_POST['file_ids']) : [];
+        $file_paths = isset($_POST['file_paths']) ? array_map('sanitize_text_field', (array) $_POST['file_paths']) : [];
 
-        if (empty($file_ids)) {
+        if (empty($file_paths)) {
             wp_send_json_error(['message' => 'No files selected']);
         }
 
-        $diff = $this->change_tracker->generate_diff($file_ids);
+        $diff = $this->git_tracker->generate_diff($file_paths);
         wp_send_json_success(['diff' => $diff]);
     }
 
@@ -285,8 +272,13 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $file_ids = isset($_POST['file_ids']) ? array_map('intval', (array) $_POST['file_ids']) : [];
-        $deleted = $this->change_tracker->clear_changes($file_ids);
+        $file_paths = isset($_POST['file_paths']) ? array_map('sanitize_text_field', (array) $_POST['file_paths']) : [];
+
+        if (empty($file_paths)) {
+            $deleted = $this->git_tracker->clear_all();
+        } else {
+            $deleted = $this->git_tracker->clear_files($file_paths);
+        }
 
         wp_send_json_success([
             'deleted' => $deleted,
@@ -341,52 +333,24 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $file_id = isset($_POST['file_id']) ? intval($_POST['file_id']) : 0;
+        $file_path = isset($_POST['file_path']) ? sanitize_text_field($_POST['file_path']) : '';
 
-        if (!$file_id) {
+        if (empty($file_path)) {
             wp_send_json_error(['message' => 'No file specified']);
         }
 
-        $change = $this->change_tracker->get_change($file_id);
-
-        if (!$change) {
-            wp_send_json_error(['message' => 'Change not found']);
-        }
-
-        if ($change['is_reverted']) {
+        if ($this->git_tracker->is_reverted($file_path)) {
             wp_send_json_error(['message' => 'File already reverted']);
         }
 
         try {
-            $path = $change['path'];
-            $change_type = $change['change_type'];
-            $original_content = $change['original_content'];
-            $full_path = WP_CONTENT_DIR . '/' . $path;
-
-            // Get current content before reverting (for reapply)
-            $current_content = file_exists($full_path) ? file_get_contents($full_path) : '';
-
-            switch ($change_type) {
-                case 'created':
-                    if (file_exists($full_path)) {
-                        unlink($full_path);
-                    }
-                    break;
-
-                case 'modified':
-                case 'deleted':
-                    if ($change['is_binary']) {
-                        wp_send_json_error(['message' => 'Cannot revert binary files']);
-                    }
-                    file_put_contents($full_path, $original_content);
-                    break;
+            if ($this->git_tracker->revert_file($file_path)) {
+                wp_send_json_success([
+                    'message' => __('File reverted successfully.', 'ai-assistant'),
+                ]);
+            } else {
+                wp_send_json_error(['message' => 'Failed to revert file']);
             }
-
-            $this->change_tracker->mark_reverted($file_id, $current_content);
-
-            wp_send_json_success([
-                'message' => __('File reverted successfully.', 'ai-assistant'),
-            ]);
         } catch (\Exception $e) {
             wp_send_json_error(['message' => $e->getMessage()]);
         }
@@ -399,52 +363,24 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $file_id = isset($_POST['file_id']) ? intval($_POST['file_id']) : 0;
+        $file_path = isset($_POST['file_path']) ? sanitize_text_field($_POST['file_path']) : '';
 
-        if (!$file_id) {
+        if (empty($file_path)) {
             wp_send_json_error(['message' => 'No file specified']);
         }
 
-        $change = $this->change_tracker->get_change($file_id);
-
-        if (!$change) {
-            wp_send_json_error(['message' => 'Change not found']);
-        }
-
-        if (!$change['is_reverted']) {
+        if (!$this->git_tracker->is_reverted($file_path)) {
             wp_send_json_error(['message' => 'File is not reverted']);
         }
 
         try {
-            $path = $change['path'];
-            $change_type = $change['change_type'];
-            $reverted_content = $change['reverted_content'];
-            $full_path = WP_CONTENT_DIR . '/' . $path;
-
-            switch ($change_type) {
-                case 'created':
-                    // Recreate the file
-                    $dir = dirname($full_path);
-                    if (!file_exists($dir)) {
-                        mkdir($dir, 0755, true);
-                    }
-                    file_put_contents($full_path, $reverted_content);
-                    break;
-
-                case 'modified':
-                case 'deleted':
-                    if ($change['is_binary']) {
-                        wp_send_json_error(['message' => 'Cannot reapply binary files']);
-                    }
-                    file_put_contents($full_path, $reverted_content);
-                    break;
+            if ($this->git_tracker->reapply_file($file_path)) {
+                wp_send_json_success([
+                    'message' => __('File changes reapplied successfully.', 'ai-assistant'),
+                ]);
+            } else {
+                wp_send_json_error(['message' => 'Failed to reapply changes']);
             }
-
-            $this->change_tracker->mark_reapplied($file_id);
-
-            wp_send_json_success([
-                'message' => __('File changes reapplied successfully.', 'ai-assistant'),
-            ]);
         } catch (\Exception $e) {
             wp_send_json_error(['message' => $e->getMessage()]);
         }
@@ -457,54 +393,26 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $file_ids = isset($_POST['file_ids']) ? array_map('intval', (array) $_POST['file_ids']) : [];
+        $file_paths = isset($_POST['file_paths']) ? array_map('sanitize_text_field', (array) $_POST['file_paths']) : [];
 
-        if (empty($file_ids)) {
+        if (empty($file_paths)) {
             wp_send_json_error(['message' => 'No files specified']);
         }
 
         $reverted = [];
         $errors = [];
 
-        foreach ($file_ids as $file_id) {
-            $change = $this->change_tracker->get_change($file_id);
-
-            if (!$change) {
-                $errors[] = sprintf(__('File %d not found', 'ai-assistant'), $file_id);
-                continue;
-            }
-
-            if ($change['is_reverted']) {
+        foreach ($file_paths as $file_path) {
+            if ($this->git_tracker->is_reverted($file_path)) {
                 continue;
             }
 
             try {
-                $path = $change['path'];
-                $change_type = $change['change_type'];
-                $original_content = $change['original_content'];
-                $full_path = WP_CONTENT_DIR . '/' . $path;
-
-                $current_content = file_exists($full_path) ? file_get_contents($full_path) : '';
-
-                switch ($change_type) {
-                    case 'created':
-                        if (file_exists($full_path)) {
-                            unlink($full_path);
-                        }
-                        break;
-
-                    case 'modified':
-                    case 'deleted':
-                        if ($change['is_binary']) {
-                            $errors[] = sprintf(__('Cannot revert binary file: %s', 'ai-assistant'), $path);
-                            continue 2;
-                        }
-                        file_put_contents($full_path, $original_content);
-                        break;
+                if ($this->git_tracker->revert_file($file_path)) {
+                    $reverted[] = $file_path;
+                } else {
+                    $errors[] = sprintf(__('Failed to revert: %s', 'ai-assistant'), $file_path);
                 }
-
-                $this->change_tracker->mark_reverted($file_id, $current_content);
-                $reverted[] = $file_id;
             } catch (\Exception $e) {
                 $errors[] = $e->getMessage();
             }
@@ -524,25 +432,17 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $file_id = isset($_POST['file_id']) ? intval($_POST['file_id']) : 0;
+        $file_path = isset($_POST['file_path']) ? sanitize_text_field($_POST['file_path']) : '';
 
-        if (!$file_id) {
+        if (empty($file_path)) {
             wp_send_json_error(['message' => 'No file specified']);
         }
 
-        $change = $this->change_tracker->get_change($file_id);
-
-        if (!$change) {
-            wp_send_json_error(['message' => 'Change not found']);
-        }
-
-        $path = $change['path'];
-
-        if (!preg_match('/\.php$/i', $path)) {
+        if (!preg_match('/\.php$/i', $file_path)) {
             wp_send_json_success(['valid' => true, 'is_php' => false]);
         }
 
-        $full_path = WP_CONTENT_DIR . '/' . $path;
+        $full_path = WP_CONTENT_DIR . '/' . $file_path;
 
         if (!file_exists($full_path)) {
             wp_send_json_success(['valid' => true, 'is_php' => true, 'message' => 'File does not exist']);
@@ -756,13 +656,13 @@ class Changes_Admin {
             wp_die(__('Security check failed.', 'ai-assistant'));
         }
 
-        $file_ids = isset($_GET['file_ids']) ? array_map('intval', explode(',', $_GET['file_ids'])) : [];
+        $file_paths = isset($_GET['file_paths']) ? array_map('sanitize_text_field', explode(',', $_GET['file_paths'])) : [];
 
-        if (empty($file_ids)) {
+        if (empty($file_paths)) {
             wp_die(__('No files selected.', 'ai-assistant'));
         }
 
-        $diff = $this->change_tracker->generate_diff($file_ids);
+        $diff = $this->git_tracker->generate_diff($file_paths);
         $filename = 'ai-changes-' . date('Y-m-d-His') . '.patch';
 
         header('Content-Type: text/plain');
