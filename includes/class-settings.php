@@ -636,17 +636,19 @@ class Settings {
                 font-family: dashicons;
                 font-size: 20px;
                 transition: transform 0.2s;
-            }
-            .ai-collapsible-section.collapsed h2::before {
                 transform: rotate(-90deg);
+            }
+            .ai-collapsible-section.expanded h2::before {
+                transform: rotate(0deg);
             }
             .ai-collapsible-section .ai-collapsible-content {
                 overflow: hidden;
+                max-height: 0;
+                opacity: 0;
                 transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
             }
-            .ai-collapsible-section.collapsed .ai-collapsible-content {
-                max-height: 0 !important;
-                opacity: 0;
+            .ai-collapsible-section.expanded .ai-collapsible-content {
+                opacity: 1;
             }
         </style>
 
@@ -659,7 +661,7 @@ class Settings {
                 do_settings_sections('ai-assistant-settings');
                 ?>
 
-                <div class="ai-collapsible-section collapsed" data-section="display">
+                <div class="ai-collapsible-section" data-section="display">
                     <h2><?php esc_html_e('Display Settings', 'ai-assistant'); ?></h2>
                     <div class="ai-collapsible-content">
                         <?php $this->display_section_callback(); ?>
@@ -698,7 +700,7 @@ class Settings {
             if ($permissionsContent.length) {
                 var $permissionsH2 = $permissionsContent.prev('h2');
                 if ($permissionsH2.length) {
-                    var $wrapper = $('<div class="ai-collapsible-section collapsed" data-section="permissions"></div>');
+                    var $wrapper = $('<div class="ai-collapsible-section" data-section="permissions"></div>');
                     $permissionsH2.before($wrapper);
                     $wrapper.append($permissionsH2).append($permissionsContent);
                 }
@@ -708,30 +710,27 @@ class Settings {
             $(document).on('click', '.ai-collapsible-section h2', function() {
                 var $section = $(this).closest('.ai-collapsible-section');
                 var $content = $section.find('.ai-collapsible-content');
-                var sectionKey = 'aiAssistant_settings_' + $section.data('section') + '_collapsed';
+                var sectionKey = 'aiAssistant_settings_' + $section.data('section') + '_expanded';
 
-                if ($section.hasClass('collapsed')) {
-                    $content.css('max-height', $content[0].scrollHeight + 'px');
-                    $section.removeClass('collapsed');
+                if ($section.hasClass('expanded')) {
+                    $section.removeClass('expanded');
+                    $content.css('max-height', '');
                     localStorage.removeItem(sectionKey);
                 } else {
                     $content.css('max-height', $content[0].scrollHeight + 'px');
-                    $content[0].offsetHeight; // Force reflow
-                    $section.addClass('collapsed');
+                    $section.addClass('expanded');
                     localStorage.setItem(sectionKey, '1');
                 }
             });
 
-            // Restore collapsed state from localStorage
+            // Restore expanded state from localStorage
             $('.ai-collapsible-section').each(function() {
                 var $section = $(this);
-                var sectionKey = 'aiAssistant_settings_' + $section.data('section') + '_collapsed';
+                var sectionKey = 'aiAssistant_settings_' + $section.data('section') + '_expanded';
                 var $content = $section.find('.ai-collapsible-content');
 
                 if (localStorage.getItem(sectionKey) === '1') {
-                    $section.addClass('collapsed');
-                } else {
-                    $section.removeClass('collapsed');
+                    $section.addClass('expanded');
                     $content.css('max-height', $content[0].scrollHeight + 'px');
                 }
             });
