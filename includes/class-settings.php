@@ -550,40 +550,42 @@ class Settings {
             'ai_assistant_chat_only' => __('Chat Only', 'ai-assistant'),
         ];
         ?>
-        <p><?php esc_html_e('AI Assistant access is controlled via WordPress capabilities. The following shows the current capability assigned to each role.', 'ai-assistant'); ?></p>
-        <table class="wp-list-table widefat fixed striped" style="max-width: 500px;">
-            <thead>
-                <tr>
-                    <th scope="col"><?php esc_html_e('Role', 'ai-assistant'); ?></th>
-                    <th scope="col"><?php esc_html_e('Capability', 'ai-assistant'); ?></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($roles as $role_slug => $role_data) :
-                    $role_obj = get_role($role_slug);
-                    $current_cap = __('No Access', 'ai-assistant');
-                    if ($role_obj) {
-                        foreach ($caps as $cap => $label) {
-                            if ($role_obj->has_cap($cap)) {
-                                $current_cap = $label;
-                                break;
+        <div class="ai-collapsible-content" data-section="permissions">
+            <p><?php esc_html_e('AI Assistant access is controlled via WordPress capabilities. The following shows the current capability assigned to each role.', 'ai-assistant'); ?></p>
+            <table class="wp-list-table widefat fixed striped" style="max-width: 500px;">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php esc_html_e('Role', 'ai-assistant'); ?></th>
+                        <th scope="col"><?php esc_html_e('Capability', 'ai-assistant'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($roles as $role_slug => $role_data) :
+                        $role_obj = get_role($role_slug);
+                        $current_cap = __('No Access', 'ai-assistant');
+                        if ($role_obj) {
+                            foreach ($caps as $cap => $label) {
+                                if ($role_obj->has_cap($cap)) {
+                                    $current_cap = $label;
+                                    break;
+                                }
                             }
                         }
-                    }
-                ?>
-                    <tr>
-                        <td><?php echo esc_html($role_data['name']); ?></td>
-                        <td><?php echo esc_html($current_cap); ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-        <p class="description">
-            <?php esc_html_e('Full Access: All file and database operations. Read Only: Can read files and query database. Chat Only: Can chat but no tool execution.', 'ai-assistant'); ?>
-        </p>
-        <p class="description">
-            <?php esc_html_e('To change capabilities, use a role management plugin or add code to assign ai_assistant_full, ai_assistant_read_only, or ai_assistant_chat_only capabilities.', 'ai-assistant'); ?>
-        </p>
+                    ?>
+                        <tr>
+                            <td><?php echo esc_html($role_data['name']); ?></td>
+                            <td><?php echo esc_html($current_cap); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <p class="description">
+                <?php esc_html_e('Full Access: All file and database operations. Read Only: Can read files and query database. Chat Only: Can chat but no tool execution.', 'ai-assistant'); ?>
+            </p>
+            <p class="description">
+                <?php esc_html_e('To change capabilities, use a role management plugin or add code to assign ai_assistant_full, ai_assistant_read_only, or ai_assistant_chat_only capabilities.', 'ai-assistant'); ?>
+            </p>
+        </div>
         <?php
     }
 
@@ -621,6 +623,33 @@ class Settings {
             return;
         }
         ?>
+        <style>
+            .ai-collapsible-section h2 {
+                cursor: pointer;
+                user-select: none;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .ai-collapsible-section h2::before {
+                content: '\f142';
+                font-family: dashicons;
+                font-size: 20px;
+                transition: transform 0.2s;
+            }
+            .ai-collapsible-section.collapsed h2::before {
+                transform: rotate(-90deg);
+            }
+            .ai-collapsible-section .ai-collapsible-content {
+                overflow: hidden;
+                transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+            }
+            .ai-collapsible-section.collapsed .ai-collapsible-content {
+                max-height: 0 !important;
+                opacity: 0;
+            }
+        </style>
+
         <div class="wrap">
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
 
@@ -630,14 +659,18 @@ class Settings {
                 do_settings_sections('ai-assistant-settings');
                 ?>
 
-                <h2><?php esc_html_e('Display Settings', 'ai-assistant'); ?></h2>
-                <?php $this->display_section_callback(); ?>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Frontend Access', 'ai-assistant'); ?></th>
-                        <td><?php $this->frontend_field_callback(); ?></td>
-                    </tr>
-                </table>
+                <div class="ai-collapsible-section collapsed" data-section="display">
+                    <h2><?php esc_html_e('Display Settings', 'ai-assistant'); ?></h2>
+                    <div class="ai-collapsible-content">
+                        <?php $this->display_section_callback(); ?>
+                        <table class="form-table">
+                            <tr>
+                                <th scope="row"><?php esc_html_e('Frontend Access', 'ai-assistant'); ?></th>
+                                <td><?php $this->frontend_field_callback(); ?></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
 
                 <?php submit_button(); ?>
             </form>
@@ -658,6 +691,49 @@ class Settings {
                         localStorage.removeItem(storageKey);
                     }
                 });
+            });
+
+            // Wrap permissions section in collapsible container
+            var $permissionsContent = $('.ai-collapsible-content[data-section="permissions"]');
+            if ($permissionsContent.length) {
+                var $permissionsH2 = $permissionsContent.prev('h2');
+                if ($permissionsH2.length) {
+                    var $wrapper = $('<div class="ai-collapsible-section collapsed" data-section="permissions"></div>');
+                    $permissionsH2.before($wrapper);
+                    $wrapper.append($permissionsH2).append($permissionsContent);
+                }
+            }
+
+            // Collapsible toggle behavior
+            $(document).on('click', '.ai-collapsible-section h2', function() {
+                var $section = $(this).closest('.ai-collapsible-section');
+                var $content = $section.find('.ai-collapsible-content');
+                var sectionKey = 'aiAssistant_settings_' + $section.data('section') + '_collapsed';
+
+                if ($section.hasClass('collapsed')) {
+                    $content.css('max-height', $content[0].scrollHeight + 'px');
+                    $section.removeClass('collapsed');
+                    localStorage.removeItem(sectionKey);
+                } else {
+                    $content.css('max-height', $content[0].scrollHeight + 'px');
+                    $content[0].offsetHeight; // Force reflow
+                    $section.addClass('collapsed');
+                    localStorage.setItem(sectionKey, '1');
+                }
+            });
+
+            // Restore collapsed state from localStorage
+            $('.ai-collapsible-section').each(function() {
+                var $section = $(this);
+                var sectionKey = 'aiAssistant_settings_' + $section.data('section') + '_collapsed';
+                var $content = $section.find('.ai-collapsible-content');
+
+                if (localStorage.getItem(sectionKey) === '1') {
+                    $section.addClass('collapsed');
+                } else {
+                    $section.removeClass('collapsed');
+                    $content.css('max-height', $content[0].scrollHeight + 'px');
+                }
             });
         });
         </script>
