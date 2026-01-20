@@ -354,6 +354,268 @@ class Git_Tracker {
     }
 
     /**
+     * Build a standalone .git directory for a subset of files (e.g., a single plugin).
+     * The returned .git can be included in a ZIP so users can run `git diff main` after extraction.
+     *
+     * Structure mirrors the main tracker:
+     * - main branch: original files (before AI modifications)
+     * - ai-changes branch: current files (after AI modifications)
+     * - HEAD points to ai-changes
+     *
+     * @param string $path_prefix Files to include (e.g., "plugins/my-plugin/")
+     * @param string $target_dir  Directory to create .git in (will create $target_dir/.git)
+     * @return bool True if .git was created with tracked changes
+     */
+    public function build_standalone_git(string $path_prefix, string $target_dir): bool {
+        if (!$this->is_active()) {
+            return false;
+        }
+
+        $path_prefix = rtrim($path_prefix, '/') . '/';
+        $entries = $this->read_index();
+        $created = $this->get_created_files();
+
+        $plugin_files = [];
+        foreach ($entries as $path => $info) {
+            if (strpos($path, $path_prefix) === 0) {
+                $relative = substr($path, strlen($path_prefix));
+                $plugin_files[$relative] = [
+                    'sha' => $info['sha'],
+                    'type' => 'modified',
+                ];
+            }
+        }
+
+        foreach ($created as $path) {
+            if (strpos($path, $path_prefix) === 0) {
+                $relative = substr($path, strlen($path_prefix));
+                $plugin_files[$relative] = [
+                    'sha' => null,
+                    'type' => 'created',
+                ];
+            }
+        }
+
+        if (empty($plugin_files)) {
+            return false;
+        }
+
+        $git_dir = rtrim($target_dir, '/') . '/.git';
+        $plugin_path = WP_PLUGIN_DIR . '/' . rtrim(substr($path_prefix, strlen('plugins/')), '/');
+
+        mkdir($git_dir, 0755, true);
+        mkdir($git_dir . '/objects', 0755);
+        mkdir($git_dir . '/refs/heads', 0755, true);
+
+        file_put_contents($git_dir . '/config', "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n");
+
+        // Build main branch with originals
+        $original_tree_files = [];
+        foreach ($plugin_files as $relative_path => $info) {
+            if ($info['type'] === 'created') {
+                // Created files don't exist in main branch
+                continue;
+            }
+
+            $original_content = $this->read_blob($info['sha']);
+            if ($original_content === null) {
+                continue;
+            }
+
+            $blob_sha = $this->write_blob_to_dir($git_dir, $original_content);
+            $original_tree_files[$relative_path] = $blob_sha;
+        }
+
+        $main_tree_sha = $this->build_tree_to_dir($git_dir, $original_tree_files);
+        $main_commit_sha = $this->write_commit_to_dir($git_dir, $main_tree_sha, null, "Original state before AI modifications");
+        file_put_contents($git_dir . '/refs/heads/main', $main_commit_sha . "\n");
+
+        // Recreate commit history from ai-changes branch for this plugin
+        $commits = $this->get_commits_for_prefix($path_prefix);
+
+        if (empty($commits)) {
+            // Fallback: single commit with current content
+            $current_tree_files = [];
+            foreach ($plugin_files as $relative_path => $info) {
+                $full_path = $plugin_path . '/' . $relative_path;
+                if (file_exists($full_path)) {
+                    $content = file_get_contents($full_path);
+                    $current_tree_files[$relative_path] = $this->write_blob_to_dir($git_dir, $content);
+                }
+            }
+            $ai_tree_sha = $this->build_tree_to_dir($git_dir, $current_tree_files);
+            $ai_commit_sha = $this->write_commit_to_dir($git_dir, $ai_tree_sha, $main_commit_sha, "AI modifications");
+        } else {
+            // Replay each commit
+            $parent_sha = $main_commit_sha;
+            $tree_state = $original_tree_files; // Start from original state
+            $ai_commit_sha = $main_commit_sha;
+
+            foreach ($commits as $commit) {
+                // Update tree state with files from this commit
+                foreach ($commit['files'] as $relative_path => $content) {
+                    if ($content === null) {
+                        // File deleted
+                        unset($tree_state[$relative_path]);
+                    } else {
+                        $tree_state[$relative_path] = $this->write_blob_to_dir($git_dir, $content);
+                    }
+                }
+
+                $tree_sha = $this->build_tree_to_dir($git_dir, $tree_state);
+                $ai_commit_sha = $this->write_commit_to_dir($git_dir, $tree_sha, $parent_sha, $commit['message']);
+                $parent_sha = $ai_commit_sha;
+            }
+        }
+
+        file_put_contents($git_dir . '/refs/heads/ai-changes', $ai_commit_sha . "\n");
+
+        // HEAD points to ai-changes, index matches final state
+        file_put_contents($git_dir . '/HEAD', "ref: refs/heads/ai-changes\n");
+
+        // Build index from current working directory
+        $index_entries = [];
+        foreach ($plugin_files as $relative_path => $info) {
+            $full_path = $plugin_path . '/' . $relative_path;
+            if (file_exists($full_path)) {
+                $content = file_get_contents($full_path);
+                $index_entries[$relative_path] = [
+                    'sha' => $this->write_blob_to_dir($git_dir, $content),
+                    'size' => strlen($content),
+                    'mode' => 0x81A4,
+                ];
+            }
+        }
+        $this->write_index_to_dir($git_dir, $index_entries);
+
+        return true;
+    }
+
+    private function write_blob_to_dir(string $git_dir, string $content): string {
+        $header = "blob " . strlen($content) . "\0";
+        $store = $header . $content;
+        $sha = sha1($store);
+
+        $dir = $git_dir . '/objects/' . substr($sha, 0, 2);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $path = $dir . '/' . substr($sha, 2);
+        if (!file_exists($path)) {
+            file_put_contents($path, gzcompress($store));
+        }
+
+        return $sha;
+    }
+
+    private function write_index_to_dir(string $git_dir, array $entries): void {
+        ksort($entries);
+
+        $body = '';
+        $now = time();
+
+        foreach ($entries as $path => $info) {
+            $body .= pack('NN', $now, 0);
+            $body .= pack('NN', $now, 0);
+            $body .= pack('NN', 0, 0);
+            $body .= pack('N', 0x81A4);
+            $body .= pack('NN', 0, 0);
+            $body .= pack('N', $info['size']);
+            $body .= hex2bin($info['sha']);
+            $body .= pack('n', min(strlen($path), 0x0FFF));
+            $body .= $path . "\0";
+            $entry_len = 62 + strlen($path) + 1;
+            $padding = (8 - ($entry_len % 8)) % 8;
+            $body .= str_repeat("\0", $padding);
+        }
+
+        $header = pack('a4NN', 'DIRC', 2, count($entries));
+        $content = $header . $body;
+
+        file_put_contents($git_dir . '/index', $content . sha1($content, true));
+    }
+
+    private function build_tree_to_dir(string $git_dir, array $files): string {
+        if (empty($files)) {
+            return $this->write_tree_to_dir($git_dir, []);
+        }
+
+        $tree = [];
+        foreach ($files as $path => $sha) {
+            $parts = explode('/', $path);
+            $this->nest_in_tree($tree, $parts, $sha);
+        }
+
+        return $this->write_tree_recursive_to_dir($git_dir, $tree);
+    }
+
+    private function write_tree_recursive_to_dir(string $git_dir, array $tree): string {
+        $entries = [];
+        foreach ($tree as $name => $item) {
+            if ($item['type'] === 'blob') {
+                $entries[] = ['mode' => '100644', 'name' => $name, 'sha' => $item['sha']];
+            } else {
+                $subtree_sha = $this->write_tree_recursive_to_dir($git_dir, $item['children']);
+                $entries[] = ['mode' => '40000', 'name' => $name, 'sha' => $subtree_sha];
+            }
+        }
+        return $this->write_tree_to_dir($git_dir, $entries);
+    }
+
+    private function write_tree_to_dir(string $git_dir, array $entries): string {
+        usort($entries, fn($a, $b) => strcmp($a['name'], $b['name']));
+
+        $content = '';
+        foreach ($entries as $entry) {
+            $content .= $entry['mode'] . ' ' . $entry['name'] . "\0" . hex2bin($entry['sha']);
+        }
+
+        $header = "tree " . strlen($content) . "\0";
+        $store = $header . $content;
+        $sha = sha1($store);
+
+        $dir = $git_dir . '/objects/' . substr($sha, 0, 2);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $path = $dir . '/' . substr($sha, 2);
+        if (!file_exists($path)) {
+            file_put_contents($path, gzcompress($store));
+        }
+
+        return $sha;
+    }
+
+    private function write_commit_to_dir(string $git_dir, string $tree_sha, ?string $parent, string $message): string {
+        $ts = time();
+        $author = "AI Assistant <ai@local> {$ts} +0000";
+
+        $content = "tree {$tree_sha}\n";
+        if ($parent) {
+            $content .= "parent {$parent}\n";
+        }
+        $content .= "author {$author}\ncommitter {$author}\n\n{$message}\n";
+
+        $header = "commit " . strlen($content) . "\0";
+        $store = $header . $content;
+        $sha = sha1($store);
+
+        $dir = $git_dir . '/objects/' . substr($sha, 0, 2);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $path = $dir . '/' . substr($sha, 2);
+        if (!file_exists($path)) {
+            file_put_contents($path, gzcompress($store));
+        }
+
+        return $sha;
+    }
+
+    /**
      * Check if there are any tracked changes.
      */
     public function has_changes(): bool {
@@ -379,7 +641,7 @@ class Git_Tracker {
         mkdir($this->git_dir . '/refs/heads', 0755, true);
 
         file_put_contents($this->git_dir . '/HEAD', "ref: refs/heads/main\n");
-        file_put_contents($this->git_dir . '/config', "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n");
+        file_put_contents($this->git_dir . '/config', "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n");
 
         $this->write_index([]);
         $this->write_created_files([]);
@@ -655,8 +917,107 @@ class Git_Tracker {
 
         $commit_sha = $this->write_commit($tree_sha, $parent, $message);
 
-        // Update ref
+        // Update ref and HEAD
         file_put_contents($ref_path, $commit_sha . "\n");
+        file_put_contents($this->git_dir . '/HEAD', "ref: refs/heads/ai-changes\n");
+    }
+
+    /**
+     * Get commits from ai-changes branch that are relevant to a path prefix.
+     * Returns commits with their messages and file contents.
+     */
+    private function get_commits_for_prefix(string $path_prefix): array {
+        $ref_path = $this->git_dir . '/refs/heads/ai-changes';
+        if (!file_exists($ref_path)) {
+            return [];
+        }
+
+        $commits = [];
+        $commit_sha = trim(file_get_contents($ref_path));
+
+        // Walk commit history
+        while ($commit_sha) {
+            $commit_data = $this->read_object($commit_sha);
+            if ($commit_data === null || $commit_data['type'] !== 'commit') {
+                break;
+            }
+
+            // Extract message (after double newline)
+            $parts = explode("\n\n", $commit_data['content'], 2);
+            $message = isset($parts[1]) ? trim($parts[1]) : '';
+
+            // Check if message mentions a file in our prefix
+            if ($message && strpos($message, $path_prefix) === 0) {
+                // Get tree SHA from commit
+                if (preg_match('/^tree ([a-f0-9]{40})/m', $commit_data['content'], $matches)) {
+                    $tree_sha = $matches[1];
+
+                    // Get files from this commit's tree that match our prefix
+                    $files = $this->get_files_from_tree_with_prefix($tree_sha, $path_prefix);
+
+                    $commits[] = [
+                        'message' => substr($message, strlen($path_prefix)), // Strip prefix
+                        'files' => $files,
+                    ];
+                }
+            }
+
+            // Get parent commit
+            if (preg_match('/^parent ([a-f0-9]{40})/m', $commit_data['content'], $matches)) {
+                $commit_sha = $matches[1];
+            } else {
+                break;
+            }
+        }
+
+        return array_reverse($commits); // Chronological order
+    }
+
+    /**
+     * Get all files from a tree that match a path prefix, with their contents.
+     */
+    private function get_files_from_tree_with_prefix(string $tree_sha, string $path_prefix): array {
+        $all_files = $this->get_all_files_from_tree($tree_sha, '');
+        $result = [];
+
+        foreach ($all_files as $path => $sha) {
+            if (strpos($path, $path_prefix) === 0) {
+                $relative = substr($path, strlen($path_prefix));
+                $content = $this->read_blob($sha);
+                if ($content !== null) {
+                    $result[$relative] = $content;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Recursively get all files from a tree.
+     */
+    private function get_all_files_from_tree(string $tree_sha, string $prefix): array {
+        $tree_data = $this->read_object($tree_sha);
+        if ($tree_data === null || $tree_data['type'] !== 'tree') {
+            return [];
+        }
+
+        $files = [];
+        $entries = $this->parse_tree($tree_data['content']);
+
+        foreach ($entries as $entry) {
+            $path = $prefix ? $prefix . '/' . $entry['name'] : $entry['name'];
+
+            if ($entry['mode'] === '40000') {
+                // Directory - recurse
+                $files = array_merge($files, $this->get_all_files_from_tree($entry['sha'], $path));
+            } else {
+                // File
+                $files[$path] = $entry['sha'];
+            }
+        }
+
+        return $files;
     }
 
     /**
