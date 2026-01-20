@@ -237,9 +237,6 @@ class Executor {
             $this->git_tracker->track_change($path, $existed ? 'modified' : 'created', $old_content, $reason);
         }
 
-        // Track if this is a plugin modification
-        $this->track_plugin_modification($path);
-
         return [
             'path' => $path,
             'action' => $existed ? 'updated' : 'created',
@@ -302,9 +299,6 @@ class Executor {
             if ($this->git_tracker) {
                 $this->git_tracker->track_change($path, 'modified', $original_content, $reason);
             }
-
-            // Track if this is a plugin modification
-            $this->track_plugin_modification($path);
         }
 
         return [
@@ -708,32 +702,6 @@ class Executor {
             'action' => 'navigate',
             'message' => 'Ready to navigate to: ' . $validated_url,
         ];
-    }
-
-    /**
-     * Track plugin modifications for download functionality
-     */
-    private function track_plugin_modification(string $path): void {
-        // Check if path is within plugins directory
-        if (strpos($path, 'plugins/') !== 0) {
-            return;
-        }
-
-        // Extract plugin folder name (e.g., "plugins/my-plugin/file.php" -> "my-plugin")
-        $parts = explode('/', $path);
-        if (count($parts) < 2) {
-            return;
-        }
-        $plugin_folder = $parts[1];
-
-        // Get current tracked plugins
-        $tracked = get_option('ai_assistant_modified_plugins', []);
-
-        // Add this plugin if not already tracked
-        if (!in_array($plugin_folder, $tracked)) {
-            $tracked[] = $plugin_folder;
-            update_option('ai_assistant_modified_plugins', $tracked);
-        }
     }
 
     // ===== ABILITIES API OPERATIONS =====

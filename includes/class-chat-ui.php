@@ -45,9 +45,17 @@ class Chat_UI {
         );
 
         wp_enqueue_script(
+            'ai-assistant-chat-settings',
+            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-settings.js',
+            ['jquery'],
+            AI_ASSISTANT_VERSION,
+            true
+        );
+
+        wp_enqueue_script(
             'ai-assistant-chat-core',
             AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-core.js',
-            ['jquery'],
+            ['jquery', 'ai-assistant-chat-settings'],
             AI_ASSISTANT_VERSION,
             true
         );
@@ -92,26 +100,12 @@ class Chat_UI {
             true
         );
 
-        $provider = get_option('ai_assistant_provider', 'anthropic');
         $settings = ai_assistant()->settings();
-
-        // Get the appropriate API key based on provider
-        $api_key = '';
-        if ($provider === 'anthropic') {
-            $api_key = $settings->get_api_key('anthropic');
-        } elseif ($provider === 'openai') {
-            $api_key = $settings->get_api_key('openai');
-        }
 
         wp_localize_script('ai-assistant-chat-core', 'aiAssistantConfig', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('ai_assistant_chat'),
             'userPermission' => $settings->get_user_permission_level(),
-            'provider' => $provider,
-            'apiKey' => $api_key,
-            'model' => get_option('ai_assistant_model', ''),
-            'summarizationModel' => get_option('ai_assistant_summarization_model', ''),
-            'localEndpoint' => get_option('ai_assistant_local_endpoint', 'http://localhost:11434'),
             'settingsUrl' => admin_url('options-general.php?page=ai-assistant-settings'),
             'homeUrl' => home_url(),
             'systemPrompt' => $settings->get_system_prompt(),
@@ -334,7 +328,8 @@ class Chat_UI {
      * Check if current user has access to AI Assistant
      */
     private function user_has_access() {
-        $permission = ai_assistant()->settings()->get_user_permission_level();
-        return $permission !== 'none';
+        return current_user_can('ai_assistant_full')
+            || current_user_can('ai_assistant_read_only')
+            || current_user_can('ai_assistant_chat_only');
     }
 }

@@ -10,31 +10,42 @@ if (!defined('ABSPATH')) {
  */
 class Plugin_Downloads {
 
-    public function __construct() {
+    private $git_tracker;
+
+    public function __construct(Git_Tracker $git_tracker) {
+        $this->git_tracker = $git_tracker;
         add_filter('plugin_action_links', [$this, 'add_download_link'], 10, 4);
         add_action('admin_action_ai_assistant_download_plugin', [$this, 'handle_download']);
+    }
+
+    /**
+     * Check if a plugin has been modified via git tracking
+     */
+    private function is_plugin_modified(string $plugin_folder): bool {
+        if (!$this->git_tracker->is_active()) {
+            return false;
+        }
+
+        $changes = $this->git_tracker->get_changes_by_directory();
+        $plugin_path = 'plugins/' . $plugin_folder;
+
+        return isset($changes[$plugin_path]) && $changes[$plugin_path]['count'] > 0;
     }
 
     /**
      * Add download link to plugin action links
      */
     public function add_download_link(array $actions, string $plugin_file, array $plugin_data, string $context): array {
-        // Get the plugin folder
         $plugin_folder = dirname($plugin_file);
 
-        // For single-file plugins, the folder would be "."
         if ($plugin_folder === '.') {
             return $actions;
         }
 
-        // Check if this plugin was modified by AI Assistant
-        $tracked = get_option('ai_assistant_modified_plugins', []);
-
-        if (!in_array($plugin_folder, $tracked)) {
+        if (!$this->is_plugin_modified($plugin_folder)) {
             return $actions;
         }
 
-        // Add download link
         $download_url = wp_nonce_url(
             admin_url('admin.php?action=ai_assistant_download_plugin&plugin=' . urlencode($plugin_folder)),
             'ai_assistant_download_' . $plugin_folder
@@ -64,7 +75,6 @@ class Plugin_Downloads {
             wp_die(__('No plugin specified.', 'ai-assistant'));
         }
 
-        // Verify nonce
         if (!wp_verify_nonce($_GET['_wpnonce'] ?? '', 'ai_assistant_download_' . $plugin_folder)) {
             wp_die(__('Security check failed.', 'ai-assistant'));
         }
@@ -75,7 +85,6 @@ class Plugin_Downloads {
             wp_die(__('Plugin not found.', 'ai-assistant'));
         }
 
-        // Security: ensure the path is within plugins directory
         $real_plugin_path = realpath($plugin_path);
         $real_plugins_dir = realpath(WP_PLUGIN_DIR);
 
@@ -106,7 +115,6 @@ class Plugin_Downloads {
         $this->add_directory_to_zip($zip, $plugin_path, $plugin_folder);
         $zip->close();
 
-        // Send the file
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="' . $zip_filename . '"');
         header('Content-Length: ' . filesize($temp_file));

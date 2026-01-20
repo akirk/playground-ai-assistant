@@ -10,20 +10,12 @@ if (!defined('ABSPATH')) {
  */
 class Settings {
 
-    private $encryption_key;
-
     public function __construct() {
-        $this->encryption_key = $this->get_encryption_key();
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_ajax_ai_assistant_get_skill', [$this, 'ajax_get_skill']);
-        add_action('wp_ajax_ai_assistant_get_current_settings', [$this, 'ajax_get_current_settings']);
         add_action('load-tools_page_ai-conversations', [$this, 'add_help_tabs']);
         add_action('load-settings_page_ai-assistant-settings', [$this, 'add_help_tabs']);
-
-        // Encrypt API keys before storing
-        add_filter('pre_update_option_ai_assistant_anthropic_api_key', [$this, 'encrypt_api_key'], 10, 2);
-        add_filter('pre_update_option_ai_assistant_openai_api_key', [$this, 'encrypt_api_key'], 10, 2);
     }
 
     public function ajax_get_skill() {
@@ -67,76 +59,6 @@ class Settings {
             'title' => $frontmatter['title'] ?? $skill_id,
             'content' => $body,
         ]);
-    }
-
-    public function ajax_get_current_settings() {
-        check_ajax_referer('ai_assistant_chat', '_wpnonce');
-
-        if (!current_user_can('edit_posts')) {
-            wp_send_json_error(['message' => 'Permission denied']);
-        }
-
-        wp_send_json_success([
-            'provider' => get_option('ai_assistant_provider', 'anthropic'),
-            'model' => get_option('ai_assistant_model', ''),
-        ]);
-    }
-
-    /**
-     * Get or generate encryption key
-     */
-    private function get_encryption_key() {
-        $key = get_option('ai_assistant_encryption_key');
-        if (!$key) {
-            $key = wp_generate_password(32, true, true);
-            update_option('ai_assistant_encryption_key', $key);
-        }
-        return $key;
-    }
-
-    private const ENCRYPTION_PREFIX = '$enc$';
-
-    /**
-     * Check if a value is already encrypted
-     */
-    public function is_encrypted($data) {
-        return is_string($data) && strpos($data, self::ENCRYPTION_PREFIX) === 0;
-    }
-
-    /**
-     * Encrypt sensitive data
-     */
-    public function encrypt($data) {
-        if (empty($data)) {
-            return '';
-        }
-        if (empty($this->encryption_key)) {
-            $this->encryption_key = $this->get_encryption_key();
-        }
-        $iv = openssl_random_pseudo_bytes(16);
-        $encrypted = openssl_encrypt($data, 'AES-256-CBC', $this->encryption_key, 0, $iv);
-        if ($encrypted === false) {
-            return '';
-        }
-        return self::ENCRYPTION_PREFIX . base64_encode($iv . $encrypted);
-    }
-
-    /**
-     * Decrypt sensitive data
-     */
-    public function decrypt($data) {
-        if (empty($data) || !$this->is_encrypted($data)) {
-            return '';
-        }
-        $data = substr($data, strlen(self::ENCRYPTION_PREFIX));
-        $decoded = base64_decode($data);
-        if ($decoded === false || strlen($decoded) < 17) {
-            return '';
-        }
-        $iv = substr($decoded, 0, 16);
-        $encrypted = substr($decoded, 16);
-        $result = openssl_decrypt($encrypted, 'AES-256-CBC', $this->encryption_key, 0, $iv);
-        return $result === false ? '' : $result;
     }
 
     /**
@@ -321,24 +243,10 @@ class Settings {
      * Register settings
      */
     public function register_settings() {
-        // Provider settings
-        register_setting('ai_assistant_settings', 'ai_assistant_provider');
-        register_setting('ai_assistant_settings', 'ai_assistant_model');
-        register_setting('ai_assistant_settings', 'ai_assistant_anthropic_api_key', [
-            'sanitize_callback' => [$this, 'sanitize_api_key_input']
-        ]);
-        register_setting('ai_assistant_settings', 'ai_assistant_openai_api_key', [
-            'sanitize_callback' => [$this, 'sanitize_api_key_input']
-        ]);
-        register_setting('ai_assistant_settings', 'ai_assistant_local_endpoint');
-        register_setting('ai_assistant_settings', 'ai_assistant_local_model');
-        register_setting('ai_assistant_settings', 'ai_assistant_summarization_model');
-        register_setting('ai_assistant_settings', 'ai_assistant_role_permissions');
-
-        // Display settings
+        // Display settings (only server-side setting now)
         register_setting('ai_assistant_settings', 'ai_assistant_show_on_frontend');
 
-        // Provider section
+        // Provider section (localStorage-based, rendered via callback)
         add_settings_section(
             'ai_assistant_provider_section',
             __('LLM Provider Settings', 'ai-assistant'),
@@ -346,159 +254,335 @@ class Settings {
             'ai-assistant-settings'
         );
 
-        add_settings_field(
-            'ai_assistant_provider',
-            __('Provider', 'ai-assistant'),
-            [$this, 'provider_field_callback'],
-            'ai-assistant-settings',
-            'ai_assistant_provider_section'
-        );
-
-        add_settings_field(
-            'ai_assistant_anthropic_api_key',
-            __('Anthropic API Key', 'ai-assistant'),
-            [$this, 'anthropic_api_key_field_callback'],
-            'ai-assistant-settings',
-            'ai_assistant_provider_section'
-        );
-
-        add_settings_field(
-            'ai_assistant_openai_api_key',
-            __('OpenAI API Key', 'ai-assistant'),
-            [$this, 'openai_api_key_field_callback'],
-            'ai-assistant-settings',
-            'ai_assistant_provider_section'
-        );
-
-        add_settings_field(
-            'ai_assistant_local_endpoint',
-            __('Local LLM Endpoint', 'ai-assistant'),
-            [$this, 'local_endpoint_field_callback'],
-            'ai-assistant-settings',
-            'ai_assistant_provider_section'
-        );
-
-        add_settings_field(
-            'ai_assistant_model',
-            __('Model', 'ai-assistant'),
-            [$this, 'model_field_callback'],
-            'ai-assistant-settings',
-            'ai_assistant_provider_section'
-        );
-
-        add_settings_field(
-            'ai_assistant_summarization_model',
-            __('Summarization Model', 'ai-assistant'),
-            [$this, 'summarization_model_field_callback'],
-            'ai-assistant-settings',
-            'ai_assistant_provider_section'
-        );
-
-        // Permissions section (table is rendered in the section callback, not as a field)
+        // Capabilities section (read-only display)
         add_settings_section(
             'ai_assistant_permissions_section',
-            __('Role Permissions', 'ai-assistant'),
+            __('Role Capabilities', 'ai-assistant'),
             [$this, 'permissions_section_callback'],
             'ai-assistant-settings'
         );
-
-        // Display section
-        add_settings_section(
-            'ai_assistant_display_section',
-            __('Display Settings', 'ai-assistant'),
-            [$this, 'display_section_callback'],
-            'ai-assistant-settings'
-        );
-
-        add_settings_field(
-            'ai_assistant_show_on_frontend',
-            __('Frontend Access', 'ai-assistant'),
-            [$this, 'frontend_field_callback'],
-            'ai-assistant-settings',
-            'ai_assistant_display_section'
-        );
     }
 
     /**
-     * Sanitize API key input - just validates, doesn't encrypt
-     * Returns null to skip the update if masked value submitted
-     */
-    public function sanitize_api_key_input($value) {
-        if (empty($value) || strpos($value, '***') === 0) {
-            return null;
-        }
-        return trim($value);
-    }
-
-    /**
-     * Encrypt API key before storing (called via pre_update_option filter)
-     */
-    public function encrypt_api_key($value, $old_value) {
-        if ($value === null || $value === '') {
-            return $old_value;
-        }
-        if ($this->is_encrypted($value)) {
-            return $value;
-        }
-        return $this->encrypt($value);
-    }
-
-    /**
-     * Get decrypted API key
-     */
-    public function get_api_key($provider) {
-        $option = $provider === 'anthropic' ? 'ai_assistant_anthropic_api_key' : 'ai_assistant_openai_api_key';
-        return $this->decrypt(get_option($option));
-    }
-
-    /**
-     * Provider section description
+     * Provider section - localStorage-based settings
      */
     public function provider_section_callback() {
-        echo '<p>' . esc_html__('Configure your LLM provider and API credentials.', 'ai-assistant') . '</p>';
+        ?>
+        <p><?php esc_html_e('These settings are stored in your browser and not on the server. API keys never leave your device.', 'ai-assistant'); ?></p>
+
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row"><label for="ai_provider"><?php esc_html_e('Provider', 'ai-assistant'); ?></label></th>
+                <td>
+                    <select id="ai_provider" class="ai-localstorage-setting" data-setting="provider">
+                        <option value="anthropic"><?php esc_html_e('Anthropic (Claude)', 'ai-assistant'); ?></option>
+                        <option value="openai"><?php esc_html_e('OpenAI (ChatGPT)', 'ai-assistant'); ?></option>
+                        <option value="local"><?php esc_html_e('Local LLM (Ollama/LM Studio)', 'ai-assistant'); ?></option>
+                    </select>
+                </td>
+            </tr>
+            <tr class="ai-provider-row" data-provider="anthropic">
+                <th scope="row"><label for="ai_anthropic_key"><?php esc_html_e('Anthropic API Key', 'ai-assistant'); ?></label></th>
+                <td>
+                    <input type="password" id="ai_anthropic_key" class="regular-text ai-localstorage-setting" data-setting="anthropicApiKey" placeholder="sk-ant-..." autocomplete="off">
+                    <button type="button" class="button ai-test-connection" data-provider="anthropic"><?php esc_html_e('Test Connection', 'ai-assistant'); ?></button>
+                    <span class="ai-connection-status"></span>
+                </td>
+            </tr>
+            <tr class="ai-provider-row" data-provider="openai">
+                <th scope="row"><label for="ai_openai_key"><?php esc_html_e('OpenAI API Key', 'ai-assistant'); ?></label></th>
+                <td>
+                    <input type="password" id="ai_openai_key" class="regular-text ai-localstorage-setting" data-setting="openaiApiKey" placeholder="sk-..." autocomplete="off">
+                    <button type="button" class="button ai-test-connection" data-provider="openai"><?php esc_html_e('Test Connection', 'ai-assistant'); ?></button>
+                    <span class="ai-connection-status"></span>
+                </td>
+            </tr>
+            <tr class="ai-provider-row" data-provider="local">
+                <th scope="row"><label for="ai_local_endpoint"><?php esc_html_e('Local LLM Endpoint', 'ai-assistant'); ?></label></th>
+                <td>
+                    <input type="url" id="ai_local_endpoint" class="regular-text ai-localstorage-setting" data-setting="localEndpoint" placeholder="http://localhost:11434">
+                    <button type="button" class="button ai-test-connection" data-provider="local"><?php esc_html_e('Test Connection', 'ai-assistant'); ?></button>
+                    <span class="ai-connection-status"></span>
+                    <p class="description"><?php esc_html_e('Ollama default: localhost:11434, LM Studio: localhost:1234', 'ai-assistant'); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="ai_model"><?php esc_html_e('Model', 'ai-assistant'); ?></label></th>
+                <td>
+                    <select id="ai_model" class="ai-localstorage-setting" data-setting="model">
+                        <option value=""><?php esc_html_e('Select a model...', 'ai-assistant'); ?></option>
+                    </select>
+                    <button type="button" class="button" id="ai-refresh-models"><?php esc_html_e('Refresh Models', 'ai-assistant'); ?></button>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="ai_summarization_model"><?php esc_html_e('Summarization Model', 'ai-assistant'); ?></label></th>
+                <td>
+                    <select id="ai_summarization_model" class="ai-localstorage-setting" data-setting="summarizationModel">
+                        <option value=""><?php esc_html_e('Same as chat model', 'ai-assistant'); ?></option>
+                    </select>
+                    <p class="description"><?php esc_html_e('Optional: Use a faster/cheaper model for conversation summaries.', 'ai-assistant'); ?></p>
+                </td>
+            </tr>
+        </table>
+
+        <style>
+            .ai-provider-row { display: none; }
+            .ai-provider-row.active { display: table-row; }
+            .ai-connection-status { margin-left: 10px; }
+            .ai-connection-status.success { color: green; }
+            .ai-connection-status.error { color: red; }
+        </style>
+
+        <script>
+        jQuery(function($) {
+            var STORAGE_PREFIX = 'aiAssistant_';
+
+            function getSetting(key) {
+                return localStorage.getItem(STORAGE_PREFIX + key) || '';
+            }
+
+            function setSetting(key, value) {
+                if (value) {
+                    localStorage.setItem(STORAGE_PREFIX + key, value);
+                } else {
+                    localStorage.removeItem(STORAGE_PREFIX + key);
+                }
+            }
+
+            // Load settings into form
+            function loadSettings() {
+                $('.ai-localstorage-setting').each(function() {
+                    var $el = $(this);
+                    var key = $el.data('setting');
+                    var value = getSetting(key);
+                    if (value) {
+                        $el.val(value);
+                    }
+                });
+                updateProviderVisibility();
+                loadModels();
+            }
+
+            // Show/hide provider-specific rows
+            function updateProviderVisibility() {
+                var provider = $('#ai_provider').val();
+                $('.ai-provider-row').removeClass('active');
+                $('.ai-provider-row[data-provider="' + provider + '"]').addClass('active');
+            }
+
+            $('#ai_provider').on('change', function() {
+                updateProviderVisibility();
+                loadModels();
+            });
+
+            // Load models based on provider
+            async function loadModels() {
+                var provider = $('#ai_provider').val();
+                var $modelSelect = $('#ai_model');
+                var $sumSelect = $('#ai_summarization_model');
+                var currentModel = getSetting('model');
+                var currentSumModel = getSetting('summarizationModel');
+
+                $modelSelect.html('<option value=""><?php echo esc_js(__('Loading...', 'ai-assistant')); ?></option>');
+
+                var models = [];
+
+                if (provider === 'anthropic') {
+                    var apiKey = $('#ai_anthropic_key').val() || getSetting('anthropicApiKey');
+                    if (apiKey) {
+                        models = await fetchAnthropicModels(apiKey);
+                    }
+                } else if (provider === 'openai') {
+                    var apiKey = $('#ai_openai_key').val() || getSetting('openaiApiKey');
+                    if (apiKey) {
+                        models = await fetchOpenAIModels(apiKey);
+                    }
+                } else if (provider === 'local') {
+                    var endpoint = $('#ai_local_endpoint').val() || getSetting('localEndpoint') || 'http://localhost:11434';
+                    models = await fetchLocalModels(endpoint);
+                }
+
+                $modelSelect.empty().append('<option value=""><?php echo esc_js(__('Select a model...', 'ai-assistant')); ?></option>');
+                $sumSelect.empty().append('<option value=""><?php echo esc_js(__('Same as chat model', 'ai-assistant')); ?></option>');
+
+                if (models && models.length > 0) {
+                    models.forEach(function(m) {
+                        var selected = m.id === currentModel ? 'selected' : '';
+                        $modelSelect.append('<option value="' + m.id + '" ' + selected + '>' + m.name + '</option>');
+                        var sumSelected = m.id === currentSumModel ? 'selected' : '';
+                        $sumSelect.append('<option value="' + m.id + '" ' + sumSelected + '>' + m.name + '</option>');
+                    });
+                } else if (provider !== 'local') {
+                    $modelSelect.html('<option value=""><?php echo esc_js(__('Enter API key first', 'ai-assistant')); ?></option>');
+                } else {
+                    $modelSelect.html('<option value=""><?php echo esc_js(__('Could not connect to local server', 'ai-assistant')); ?></option>');
+                }
+            }
+
+            async function fetchAnthropicModels(apiKey) {
+                try {
+                    var response = await fetch('https://api.anthropic.com/v1/models?limit=100', {
+                        headers: {
+                            'x-api-key': apiKey,
+                            'anthropic-version': '2023-06-01',
+                            'anthropic-dangerous-direct-browser-access': 'true'
+                        }
+                    });
+                    if (response.ok) {
+                        var data = await response.json();
+                        return (data.data || []).map(function(m) {
+                            return {id: m.id, name: m.display_name || m.id};
+                        });
+                    }
+                } catch (e) {}
+                return [];
+            }
+
+            async function fetchOpenAIModels(apiKey) {
+                try {
+                    var response = await fetch('https://api.openai.com/v1/models', {
+                        headers: { 'Authorization': 'Bearer ' + apiKey }
+                    });
+                    if (response.ok) {
+                        var data = await response.json();
+                        return (data.data || [])
+                            .filter(function(m) { return m.id.indexOf('gpt-') === 0 && m.id.indexOf('instruct') === -1; })
+                            .map(function(m) { return {id: m.id, name: m.id}; })
+                            .sort(function(a, b) { return a.id.localeCompare(b.id); });
+                    }
+                } catch (e) {}
+                return [];
+            }
+
+            async function fetchLocalModels(endpoint) {
+                endpoint = endpoint.replace(/\/$/, '');
+                try {
+                    var response = await fetch(endpoint + '/api/tags');
+                    if (response.ok) {
+                        var data = await response.json();
+                        return (data.models || []).map(function(m) { return {id: m.name, name: m.name}; });
+                    }
+                } catch (e) {}
+                try {
+                    var response = await fetch(endpoint + '/v1/models');
+                    if (response.ok) {
+                        var data = await response.json();
+                        return (data.data || []).map(function(m) { return {id: m.id, name: m.id}; });
+                    }
+                } catch (e) {}
+                return [];
+            }
+
+            // Test connection
+            $('.ai-test-connection').on('click', async function() {
+                var $btn = $(this);
+                var $status = $btn.next('.ai-connection-status');
+                var provider = $btn.data('provider');
+
+                $status.text('<?php echo esc_js(__('Testing...', 'ai-assistant')); ?>').removeClass('success error');
+
+                var success = false;
+                var message = '';
+
+                if (provider === 'anthropic') {
+                    var apiKey = $('#ai_anthropic_key').val();
+                    if (!apiKey) { $status.text('<?php echo esc_js(__('Enter API key first', 'ai-assistant')); ?>').addClass('error'); return; }
+                    try {
+                        var response = await fetch('https://api.anthropic.com/v1/models', {
+                            headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }
+                        });
+                        success = response.ok;
+                        message = success ? '<?php echo esc_js(__('Connected!', 'ai-assistant')); ?>' : '<?php echo esc_js(__('Invalid API key', 'ai-assistant')); ?>';
+                    } catch (e) { message = e.message; }
+                } else if (provider === 'openai') {
+                    var apiKey = $('#ai_openai_key').val();
+                    if (!apiKey) { $status.text('<?php echo esc_js(__('Enter API key first', 'ai-assistant')); ?>').addClass('error'); return; }
+                    try {
+                        var response = await fetch('https://api.openai.com/v1/models', {
+                            headers: { 'Authorization': 'Bearer ' + apiKey }
+                        });
+                        success = response.ok;
+                        message = success ? '<?php echo esc_js(__('Connected!', 'ai-assistant')); ?>' : '<?php echo esc_js(__('Invalid API key', 'ai-assistant')); ?>';
+                    } catch (e) { message = e.message; }
+                } else if (provider === 'local') {
+                    var endpoint = $('#ai_local_endpoint').val() || 'http://localhost:11434';
+                    try {
+                        var response = await fetch(endpoint.replace(/\/$/, '') + '/api/tags');
+                        success = response.ok;
+                        message = success ? '<?php echo esc_js(__('Connected to Ollama!', 'ai-assistant')); ?>' : '';
+                    } catch (e) {}
+                    if (!success) {
+                        try {
+                            var response = await fetch(endpoint.replace(/\/$/, '') + '/v1/models');
+                            success = response.ok;
+                            message = success ? '<?php echo esc_js(__('Connected to LM Studio!', 'ai-assistant')); ?>' : '';
+                        } catch (e) {}
+                    }
+                    if (!success) { message = '<?php echo esc_js(__('Could not connect', 'ai-assistant')); ?>'; }
+                }
+
+                $status.text(message).addClass(success ? 'success' : 'error');
+                if (success) { loadModels(); }
+            });
+
+            // Refresh models button
+            $('#ai-refresh-models').on('click', function() { loadModels(); });
+
+            // Reload models when API key changes
+            $('#ai_anthropic_key, #ai_openai_key, #ai_local_endpoint').on('change', function() { loadModels(); });
+
+            // Initialize
+            loadSettings();
+        });
+        </script>
+        <?php
     }
 
     /**
-     * Permissions section with table
+     * Permissions section - read-only display of capabilities
      */
     public function permissions_section_callback() {
-        $permissions = get_option('ai_assistant_role_permissions', []);
         $roles = wp_roles()->roles;
-        $levels = [
-            'full' => __('Full Access', 'ai-assistant'),
-            'read_only' => __('Read Only', 'ai-assistant'),
-            'chat_only' => __('Chat Only (No Tools)', 'ai-assistant'),
-            'none' => __('No Access', 'ai-assistant')
+        $caps = [
+            'ai_assistant_full' => __('Full Access', 'ai-assistant'),
+            'ai_assistant_read_only' => __('Read Only', 'ai-assistant'),
+            'ai_assistant_chat_only' => __('Chat Only', 'ai-assistant'),
         ];
         ?>
-        <p><?php esc_html_e('Configure what each WordPress role can do with the AI Assistant.', 'ai-assistant'); ?></p>
+        <p><?php esc_html_e('AI Assistant access is controlled via WordPress capabilities. The following shows the current capability assigned to each role.', 'ai-assistant'); ?></p>
         <table class="wp-list-table widefat fixed striped" style="max-width: 500px;">
             <thead>
                 <tr>
                     <th scope="col"><?php esc_html_e('Role', 'ai-assistant'); ?></th>
-                    <th scope="col"><?php esc_html_e('Access Level', 'ai-assistant'); ?></th>
+                    <th scope="col"><?php esc_html_e('Capability', 'ai-assistant'); ?></th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($roles as $role_slug => $role) : ?>
+                <?php foreach ($roles as $role_slug => $role_data) :
+                    $role_obj = get_role($role_slug);
+                    $current_cap = __('No Access', 'ai-assistant');
+                    if ($role_obj) {
+                        foreach ($caps as $cap => $label) {
+                            if ($role_obj->has_cap($cap)) {
+                                $current_cap = $label;
+                                break;
+                            }
+                        }
+                    }
+                ?>
                     <tr>
-                        <td><?php echo esc_html($role['name']); ?></td>
-                        <td>
-                            <select name="ai_assistant_role_permissions[<?php echo esc_attr($role_slug); ?>]">
-                                <?php foreach ($levels as $level_slug => $level_name) : ?>
-                                    <option value="<?php echo esc_attr($level_slug); ?>"
-                                            <?php selected($permissions[$role_slug] ?? 'none', $level_slug); ?>>
-                                        <?php echo esc_html($level_name); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </td>
+                        <td><?php echo esc_html($role_data['name']); ?></td>
+                        <td><?php echo esc_html($current_cap); ?></td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
         <p class="description">
             <?php esc_html_e('Full Access: All file and database operations. Read Only: Can read files and query database. Chat Only: Can chat but no tool execution.', 'ai-assistant'); ?>
+        </p>
+        <p class="description">
+            <?php esc_html_e('To change capabilities, use a role management plugin or add code to assign ai_assistant_full, ai_assistant_read_only, or ai_assistant_chat_only capabilities.', 'ai-assistant'); ?>
         </p>
         <?php
     }
@@ -530,138 +614,6 @@ class Settings {
     }
 
     /**
-     * Provider dropdown field
-     */
-    public function provider_field_callback() {
-        $provider = get_option('ai_assistant_provider', 'anthropic');
-        ?>
-        <select name="ai_assistant_provider" id="ai_assistant_provider">
-            <option value="anthropic" <?php selected($provider, 'anthropic'); ?>>
-                <?php esc_html_e('Anthropic (Claude)', 'ai-assistant'); ?>
-            </option>
-            <option value="openai" <?php selected($provider, 'openai'); ?>>
-                <?php esc_html_e('OpenAI (ChatGPT)', 'ai-assistant'); ?>
-            </option>
-            <option value="local" <?php selected($provider, 'local'); ?>>
-                <?php esc_html_e('Local LLM (Ollama/LM Studio)', 'ai-assistant'); ?>
-            </option>
-        </select>
-        <?php
-    }
-
-    /**
-     * Anthropic API key field
-     */
-    public function anthropic_api_key_field_callback() {
-        $api_key = get_option('ai_assistant_anthropic_api_key');
-        $masked = $api_key ? '***' . substr($this->decrypt($api_key), -4) : '';
-        ?>
-        <input type="password"
-               name="ai_assistant_anthropic_api_key"
-               id="ai_assistant_anthropic_api_key"
-               value="<?php echo esc_attr($masked); ?>"
-               class="regular-text ai-provider-field"
-               data-provider="anthropic"
-               placeholder="sk-ant-..."
-               autocomplete="off">
-        <button type="button" class="button ai-test-connection" data-provider="anthropic">
-            <?php esc_html_e('Test Connection', 'ai-assistant'); ?>
-        </button>
-        <span class="ai-connection-status"></span>
-        <?php
-    }
-
-    /**
-     * OpenAI API key field
-     */
-    public function openai_api_key_field_callback() {
-        $api_key = get_option('ai_assistant_openai_api_key');
-        $masked = $api_key ? '***' . substr($this->decrypt($api_key), -4) : '';
-        ?>
-        <input type="password"
-               name="ai_assistant_openai_api_key"
-               id="ai_assistant_openai_api_key"
-               value="<?php echo esc_attr($masked); ?>"
-               class="regular-text ai-provider-field"
-               data-provider="openai"
-               placeholder="sk-..."
-               autocomplete="off">
-        <button type="button" class="button ai-test-connection" data-provider="openai">
-            <?php esc_html_e('Test Connection', 'ai-assistant'); ?>
-        </button>
-        <span class="ai-connection-status"></span>
-        <?php
-    }
-
-    /**
-     * Local LLM endpoint field
-     */
-    public function local_endpoint_field_callback() {
-        $endpoint = get_option('ai_assistant_local_endpoint', '');
-        ?>
-        <input type="url"
-               name="ai_assistant_local_endpoint"
-               id="ai_assistant_local_endpoint"
-               value="<?php echo esc_url($endpoint); ?>"
-               class="regular-text ai-provider-field"
-               data-provider="local"
-               placeholder="Leave empty to auto-detect">
-        <button type="button" class="button" id="ai-auto-detect-endpoint">
-            <?php esc_html_e('Auto-Detect', 'ai-assistant'); ?>
-        </button>
-        <button type="button" class="button ai-test-connection" data-provider="local">
-            <?php esc_html_e('Test Connection', 'ai-assistant'); ?>
-        </button>
-        <span class="ai-connection-status"></span>
-        <p class="description">
-            <?php esc_html_e('Common endpoints: Ollama (localhost:11434), LM Studio (localhost:1234). Leave empty to auto-detect.', 'ai-assistant'); ?>
-        </p>
-        <?php
-    }
-
-    /**
-     * Model selection field
-     */
-    public function model_field_callback() {
-        $model = get_option('ai_assistant_model', '');
-        $provider = get_option('ai_assistant_provider', 'anthropic');
-        ?>
-        <select name="ai_assistant_model" id="ai_assistant_model">
-            <option value=""><?php esc_html_e('Select a model...', 'ai-assistant'); ?></option>
-        </select>
-        <button type="button" class="button" id="ai-refresh-models">
-            <?php esc_html_e('Refresh Models', 'ai-assistant'); ?>
-        </button>
-        <?php
-        $anthropic_key = $this->get_api_key('anthropic');
-        $openai_key = $this->get_api_key('openai');
-        ?>
-        <script>
-            var aiAssistantCurrentModel = '<?php echo esc_js($model); ?>';
-            var aiAssistantCurrentProvider = '<?php echo esc_js($provider); ?>';
-            var aiAssistantAnthropicKey = '<?php echo esc_js($anthropic_key); ?>';
-            var aiAssistantOpenAIKey = '<?php echo esc_js($openai_key); ?>';
-            var aiAssistantSummarizationModel = '<?php echo esc_js(get_option('ai_assistant_summarization_model', '')); ?>';
-        </script>
-        <?php
-    }
-
-    /**
-     * Summarization model selection field
-     */
-    public function summarization_model_field_callback() {
-        $model = get_option('ai_assistant_summarization_model', '');
-        ?>
-        <select name="ai_assistant_summarization_model" id="ai_assistant_summarization_model">
-            <option value=""><?php esc_html_e('Same as chat model (default)', 'ai-assistant'); ?></option>
-        </select>
-        <p class="description">
-            <?php esc_html_e('Model used for generating conversation summaries. Choose a faster/cheaper model to reduce costs.', 'ai-assistant'); ?>
-        </p>
-        <?php
-    }
-
-    /**
      * Render the settings page
      */
     public function render_settings_page() {
@@ -671,514 +623,57 @@ class Settings {
         ?>
         <div class="wrap">
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
-            <form action="options.php" method="post">
+
+            <form action="options.php" method="post" id="ai-assistant-settings-form">
                 <?php
                 settings_fields('ai_assistant_settings');
                 do_settings_sections('ai-assistant-settings');
-                submit_button();
                 ?>
+
+                <h2><?php esc_html_e('Display Settings', 'ai-assistant'); ?></h2>
+                <?php $this->display_section_callback(); ?>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><?php esc_html_e('Frontend Access', 'ai-assistant'); ?></th>
+                        <td><?php $this->frontend_field_callback(); ?></td>
+                    </tr>
+                </table>
+
+                <?php submit_button(); ?>
             </form>
         </div>
-        <style>
-            /* Hide all provider-specific rows by default */
-            .ai-provider-row { display: none; }
-            /* Show rows matching the current provider */
-            .ai-settings-form[data-provider="anthropic"] .ai-provider-row[data-provider="anthropic"],
-            .ai-settings-form[data-provider="openai"] .ai-provider-row[data-provider="openai"],
-            .ai-settings-form[data-provider="local"] .ai-provider-row[data-provider="local"] {
-                display: table-row;
-            }
-            .ai-connection-status { margin-left: 10px; }
-            .ai-connection-status.success { color: green; }
-            .ai-connection-status.error { color: red; }
-        </style>
+
         <script>
         jQuery(function($) {
-            // Add data-provider attribute to the form and provider-specific rows
-            var $form = $('#ai_assistant_provider').closest('form');
-            var $submitBtn = $form.find('#submit');
-            $form.addClass('ai-settings-form').attr('data-provider', $('#ai_assistant_provider').val());
-
-            // Enable/disable submit based on model selection
-            function updateSubmitState() {
-                var modelVal = $('#ai_assistant_model').val();
-                var hasValidModel = modelVal && modelVal !== '';
-                $submitBtn.prop('disabled', !hasValidModel);
-            }
-
-            // Mark provider-specific rows
-            $('.ai-provider-field[data-provider]').each(function() {
-                $(this).closest('tr').addClass('ai-provider-row').attr('data-provider', $(this).data('provider'));
-            });
-
-            // Show/hide provider-specific fields
-            $('#ai_assistant_provider').on('change', function() {
-                var provider = $(this).val();
-                $form.attr('data-provider', provider);
-                loadModels(provider);
-            });
-
-            // Fetch OpenAI models from API
-            async function fetchOpenAIModels() {
-                // Use stored decrypted key, or fall back to form value if user just entered a new one
-                var formKey = $('#ai_assistant_openai_api_key').val();
-                var apiKey = (formKey && formKey.indexOf('***') !== 0) ? formKey : aiAssistantOpenAIKey;
-
-                if (!apiKey) {
-                    return null;
-                }
-
-                try {
-                    var response = await fetch('https://api.openai.com/v1/models', {
-                        method: 'GET',
-                        headers: {
-                            'Authorization': 'Bearer ' + apiKey
-                        }
-                    });
-
-                    if (response.ok) {
-                        var data = await response.json();
-                        if (data.data && data.data.length > 0) {
-                            // Filter to chat models and sort by id
-                            var chatModels = data.data
-                                .filter(function(m) {
-                                    return m.id.indexOf('gpt-') === 0 &&
-                                           m.id.indexOf('instruct') === -1 &&
-                                           m.id.indexOf('realtime') === -1;
-                                })
-                                .map(function(m) {
-                                    return {id: m.id, name: m.id};
-                                })
-                                .sort(function(a, b) {
-                                    // Prioritize gpt-4o models
-                                    if (a.id.indexOf('gpt-4o') === 0 && b.id.indexOf('gpt-4o') !== 0) return -1;
-                                    if (b.id.indexOf('gpt-4o') === 0 && a.id.indexOf('gpt-4o') !== 0) return 1;
-                                    return a.id.localeCompare(b.id);
-                                });
-                            return chatModels;
-                        }
-                    }
-                } catch (e) {
-                    console.log('Failed to fetch OpenAI models:', e);
-                }
-                return null;
-            }
-
-            // Fetch Anthropic models from API
-            async function fetchAnthropicModels() {
-                // Use stored decrypted key, or fall back to form value if user just entered a new one
-                var formKey = $('#ai_assistant_anthropic_api_key').val();
-                var apiKey = (formKey && formKey.indexOf('***') !== 0) ? formKey : aiAssistantAnthropicKey;
-
-                if (!apiKey) {
-                    return null;
-                }
-
-                try {
-                    var response = await fetch('https://api.anthropic.com/v1/models?limit=100', {
-                        method: 'GET',
-                        headers: {
-                            'x-api-key': apiKey,
-                            'anthropic-version': '2023-06-01',
-                            'anthropic-dangerous-direct-browser-access': 'true'
-                        }
-                    });
-
-                    if (response.ok) {
-                        var data = await response.json();
-                        if (data.data && data.data.length > 0) {
-                            return data.data.map(function(m) {
-                                return {id: m.id, name: m.display_name || m.id};
-                            });
-                        }
-                    }
-                } catch (e) {
-                    console.log('Failed to fetch Anthropic models:', e);
-                }
-                return null;
-            }
-
-            // Populate summarization model dropdown with same models
-            function populateSummarizationModels(models) {
-                var $sumSelect = $('#ai_assistant_summarization_model');
-                $sumSelect.empty();
-                $sumSelect.append('<option value="">Same as chat model (default)</option>');
-                if (models && models.length > 0) {
-                    models.forEach(function(model) {
-                        var selected = model.id === aiAssistantSummarizationModel ? 'selected' : '';
-                        $sumSelect.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
-                    });
-                }
-            }
-
-            // Load models for selected provider
-            function loadModels(provider) {
-                var $select = $('#ai_assistant_model');
-                $select.empty();
-
-                switch (provider) {
-                    case 'anthropic':
-                        var formKey = $('#ai_assistant_anthropic_api_key').val();
-                        var hasSavedKey = formKey && formKey.indexOf('***') === 0;
-                        var apiKey = hasSavedKey ? aiAssistantAnthropicKey : formKey;
-                        if (!apiKey) {
-                            $select.html('<option value="">Enter API key to load models</option>');
-                            updateSubmitState();
-                            return;
-                        }
-                        $select.html('<option value="">Loading models...</option>');
-                        updateSubmitState();
-                        fetchAnthropicModels().then(function(models) {
-                            $select.empty();
-                            if (models && models.length > 0) {
-                                var selectedModel = aiAssistantCurrentModel;
-                                if (!selectedModel) {
-                                    var sonnet = models.find(function(m) {
-                                        return m.id.indexOf('sonnet') > -1 && m.id.indexOf('4-5') > -1;
-                                    });
-                                    if (sonnet) {
-                                        selectedModel = sonnet.id;
-                                    }
-                                }
-                                models.forEach(function(model) {
-                                    var selected = model.id === selectedModel ? 'selected' : '';
-                                    $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
-                                });
-                                populateSummarizationModels(models);
-                            } else {
-                                $select.html('<option value="">Failed to load models - check API key</option>');
-                            }
-                            updateSubmitState();
-                        });
-                        return;
-                    case 'openai':
-                        var openaiFormKey = $('#ai_assistant_openai_api_key').val();
-                        var openaiHasSavedKey = openaiFormKey && openaiFormKey.indexOf('***') === 0;
-                        var openaiKey = openaiHasSavedKey ? aiAssistantOpenAIKey : openaiFormKey;
-                        if (!openaiKey) {
-                            $select.html('<option value="">Enter API key to load models</option>');
-                            updateSubmitState();
-                            return;
-                        }
-                        $select.html('<option value="">Loading models...</option>');
-                        updateSubmitState();
-                        fetchOpenAIModels().then(function(models) {
-                            $select.empty();
-                            if (models && models.length > 0) {
-                                var selectedModel = aiAssistantCurrentModel;
-                                if (!selectedModel) {
-                                    var preferred = models.find(function(m) { return m.id === 'gpt-4o'; });
-                                    if (preferred) {
-                                        selectedModel = preferred.id;
-                                    } else if (models.length > 0) {
-                                        selectedModel = models[0].id;
-                                    }
-                                }
-                                models.forEach(function(model) {
-                                    var selected = model.id === selectedModel ? 'selected' : '';
-                                    $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
-                                });
-                                populateSummarizationModels(models);
-                            } else {
-                                $select.html('<option value="">Failed to load models - check API key</option>');
-                            }
-                            updateSubmitState();
-                        });
-                        return;
-                    case 'local':
-                        $select.html('<option value="">Loading from local server...</option>');
-                        updateSubmitState();
-                        fetchLocalModels();
-                        return;
-                }
-            }
-
-            // Fetch models from local LLM server
-            async function fetchLocalModels() {
-                var $select = $('#ai_assistant_model');
-                var endpoint = $('#ai_assistant_local_endpoint').val() || 'http://localhost:11434';
-                endpoint = endpoint.replace(/\/$/, '');
-
-                var models = [];
-
-                // Try Ollama API
-                try {
-                    var response = await fetch(endpoint + '/api/tags');
-                    if (response.ok) {
-                        var data = await response.json();
-                        if (data.models) {
-                            models = data.models.map(function(m) {
-                                return {id: m.name, name: m.name};
-                            });
-                        }
-                    }
-                } catch (e) {}
-
-                // Try OpenAI-compatible API (LM Studio)
-                if (models.length === 0) {
-                    try {
-                        var response = await fetch(endpoint + '/v1/models');
-                        if (response.ok) {
-                            var data = await response.json();
-                            if (data.data) {
-                                models = data.data.map(function(m) {
-                                    return {id: m.id, name: m.id};
-                                });
-                            }
-                        }
-                    } catch (e) {}
-                }
-
-                // Try alternate port (LM Studio on 1234)
-                if (models.length === 0 && endpoint.indexOf(':11434') > -1) {
-                    var altEndpoint = endpoint.replace(':11434', ':1234');
-                    try {
-                        var response = await fetch(altEndpoint + '/v1/models');
-                        if (response.ok) {
-                            var data = await response.json();
-                            if (data.data) {
-                                models = data.data.map(function(m) {
-                                    return {id: m.id, name: m.id};
-                                });
-                                // Update the endpoint field
-                                $('#ai_assistant_local_endpoint').val(altEndpoint);
-                            }
-                        }
-                    } catch (e) {}
-                }
-
-                $select.empty();
-                if (models.length > 0) {
-                    var selectedModel = aiAssistantCurrentModel;
-                    if (!selectedModel) {
-                        selectedModel = models[0].id;
-                    }
-                    models.forEach(function(model) {
-                        var selected = model.id === selectedModel ? 'selected' : '';
-                        $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + '</option>');
-                    });
-                    populateSummarizationModels(models);
-                } else {
-                    $select.html('<option value="">No models found - check if server is running</option>');
-                }
-                updateSubmitState();
-            }
-
-            // Test connection button - client-side testing
-            $('.ai-test-connection').on('click', async function() {
-                var $btn = $(this);
-                var $status = $btn.nextAll('.ai-connection-status').first();
-                var provider = $btn.data('provider');
-
-                $status.text('Testing...').removeClass('success error');
-
-                try {
-                    if (provider === 'anthropic') {
-                        await testAnthropicConnection($status);
-                    } else if (provider === 'openai') {
-                        await testOpenAIConnection($status);
-                    } else if (provider === 'local') {
-                        await testLocalConnection($status);
-                    }
-                } catch (error) {
-                    $status.text(error.message).addClass('error');
-                }
-            });
-
-            async function testAnthropicConnection($status) {
-                var formKey = $('#ai_assistant_anthropic_api_key').val();
-                var apiKey = (formKey && formKey.indexOf('***') !== 0) ? formKey : aiAssistantAnthropicKey;
-
-                if (!apiKey) {
-                    $status.text('Enter API key first').addClass('error');
-                    return;
-                }
-
-                if (apiKey.indexOf('sk-ant-') !== 0) {
-                    $status.text('Invalid key format (should start with sk-ant-)').addClass('error');
-                    return;
-                }
-
-                try {
-                    var response = await fetch('https://api.anthropic.com/v1/messages', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'x-api-key': apiKey,
-                            'anthropic-version': '2023-06-01',
-                            'anthropic-dangerous-direct-browser-access': 'true'
-                        },
-                        body: JSON.stringify({
-                            model: 'claude-3-haiku-20240307',
-                            max_tokens: 1,
-                            messages: [{role: 'user', content: 'hi'}]
-                        })
-                    });
-
-                    if (response.status === 401) {
-                        $status.text('Invalid API key').addClass('error');
-                    } else if (response.status === 403) {
-                        $status.text('API key lacks permissions').addClass('error');
-                    } else if (response.ok) {
-                        $status.text('Connected to Anthropic API!').addClass('success');
+            // Save localStorage settings before form submits
+            $('#ai-assistant-settings-form').on('submit', function() {
+                $('.ai-localstorage-setting').each(function() {
+                    var $el = $(this);
+                    var key = $el.data('setting');
+                    var value = $el.val();
+                    var storageKey = 'aiAssistant_' + key;
+                    if (value) {
+                        localStorage.setItem(storageKey, value);
                     } else {
-                        var data = await response.json();
-                        $status.text(data.error?.message || 'Connection failed').addClass('error');
+                        localStorage.removeItem(storageKey);
                     }
-                } catch (error) {
-                    $status.text('Network error: ' + error.message).addClass('error');
-                }
-            }
-
-            async function testOpenAIConnection($status) {
-                var formKey = $('#ai_assistant_openai_api_key').val();
-                var apiKey = (formKey && formKey.indexOf('***') !== 0) ? formKey : aiAssistantOpenAIKey;
-
-                if (!apiKey) {
-                    $status.text('Enter API key first').addClass('error');
-                    return;
-                }
-
-                if (apiKey.indexOf('sk-') !== 0) {
-                    $status.text('Invalid key format (should start with sk-)').addClass('error');
-                    return;
-                }
-
-                try {
-                    var response = await fetch('https://api.openai.com/v1/models', {
-                        headers: {
-                            'Authorization': 'Bearer ' + apiKey
-                        }
-                    });
-
-                    if (response.status === 401) {
-                        $status.text('Invalid API key').addClass('error');
-                    } else if (response.ok) {
-                        $status.text('Connected to OpenAI API!').addClass('success');
-                    } else {
-                        var data = await response.json();
-                        $status.text(data.error?.message || 'Connection failed').addClass('error');
-                    }
-                } catch (error) {
-                    $status.text('Network error: ' + error.message).addClass('error');
-                }
-            }
-
-            async function testLocalConnection($status) {
-                var endpoint = $('#ai_assistant_local_endpoint').val() || 'http://localhost:11434';
-                endpoint = endpoint.replace(/\/$/, '');
-
-                var endpoints = [endpoint];
-                if (endpoint.indexOf(':11434') > -1) {
-                    endpoints.push(endpoint.replace(':11434', ':1234'));
-                }
-                if (endpoint.indexOf(':1234') > -1) {
-                    endpoints.push(endpoint.replace(':1234', ':11434'));
-                }
-
-                for (var i = 0; i < endpoints.length; i++) {
-                    var testEndpoint = endpoints[i];
-
-                    // Try Ollama
-                    try {
-                        var response = await fetch(testEndpoint + '/api/tags');
-                        if (response.ok) {
-                            if (testEndpoint !== endpoint) {
-                                $('#ai_assistant_local_endpoint').val(testEndpoint);
-                            }
-                            $status.text('Connected to Ollama at ' + testEndpoint).addClass('success');
-                            loadModels('local');
-                            return;
-                        }
-                    } catch (e) {}
-
-                    // Try OpenAI-compatible (LM Studio)
-                    try {
-                        var response = await fetch(testEndpoint + '/v1/models');
-                        if (response.ok) {
-                            if (testEndpoint !== endpoint) {
-                                $('#ai_assistant_local_endpoint').val(testEndpoint);
-                            }
-                            $status.text('Connected to LM Studio at ' + testEndpoint).addClass('success');
-                            loadModels('local');
-                            return;
-                        }
-                    } catch (e) {}
-                }
-
-                $status.text('No local LLM found. Make sure Ollama or LM Studio is running.').addClass('error');
-            }
-
-            // Auto-detect endpoint button
-            $('#ai-auto-detect-endpoint').on('click', async function() {
-                var $btn = $(this);
-                var $status = $btn.nextAll('.ai-connection-status').first();
-
-                $btn.prop('disabled', true);
-                $status.text('Detecting...').removeClass('success error');
-
-                await testLocalConnection($status);
-                $btn.prop('disabled', false);
+                });
             });
-
-            // Refresh models button
-            $('#ai-refresh-models').on('click', function() {
-                loadModels($('#ai_assistant_provider').val());
-            });
-
-            // Reload models when API key changes
-            $('#ai_assistant_anthropic_api_key').on('change', function() {
-                if ($('#ai_assistant_provider').val() === 'anthropic') {
-                    loadModels('anthropic');
-                }
-            });
-
-            $('#ai_assistant_openai_api_key').on('change', function() {
-                if ($('#ai_assistant_provider').val() === 'openai') {
-                    loadModels('openai');
-                }
-            });
-
-            // Initial load - disable submit until models are loaded
-            $submitBtn.prop('disabled', true);
-            loadModels(aiAssistantCurrentProvider);
-
-            // Make sections collapsible (collapsed by default)
-            function makeCollapsible(headingText, wrapperClass) {
-                var $heading = $('h2:contains("' + headingText + '")');
-                if ($heading.length) {
-                    $heading.css('cursor', 'pointer')
-                        .append(' <span class="dashicons dashicons-arrow-down-alt2" style="vertical-align: middle;"></span>');
-
-                    var $content = $heading.nextUntil('h2, .submit, p.submit');
-                    $content.wrapAll('<div class="' + wrapperClass + '"></div>');
-                    var $wrapper = $('.' + wrapperClass);
-                    $wrapper.hide();
-
-                    $heading.on('click', function() {
-                        $wrapper.slideToggle(200);
-                        var $icon = $(this).find('.dashicons');
-                        $icon.toggleClass('dashicons-arrow-down-alt2 dashicons-arrow-up-alt2');
-                    });
-                }
-            }
-
-            makeCollapsible('Role Permissions', 'ai-permissions-content');
-            makeCollapsible('Display Settings', 'ai-display-content');
         });
         </script>
         <?php
     }
 
-    // Note: Connection testing and model fetching now happens client-side via JavaScript
-    // to support WordPress Playground sandbox environment where PHP cannot reach external APIs
-
     /**
-     * Get user's permission level
+     * Get user's permission level based on WordPress capabilities
      */
     public function get_user_permission_level($user_id = null) {
         if (!$user_id) {
             $user_id = get_current_user_id();
+        }
+
+        if (!$user_id) {
+            return 'none';
         }
 
         $user = get_userdata($user_id);
@@ -1186,23 +681,17 @@ class Settings {
             return 'none';
         }
 
-        $permissions = get_option('ai_assistant_role_permissions', []);
-
-        // Check each role the user has, return highest permission
-        $level_priority = ['full' => 4, 'read_only' => 3, 'chat_only' => 2, 'none' => 1];
-        $highest_level = 'none';
-        $highest_priority = 0;
-
-        foreach ($user->roles as $role) {
-            $level = $permissions[$role] ?? 'none';
-            $priority = $level_priority[$level] ?? 0;
-            if ($priority > $highest_priority) {
-                $highest_priority = $priority;
-                $highest_level = $level;
-            }
+        if (user_can($user_id, 'ai_assistant_full')) {
+            return 'full';
+        }
+        if (user_can($user_id, 'ai_assistant_read_only')) {
+            return 'read_only';
+        }
+        if (user_can($user_id, 'ai_assistant_chat_only')) {
+            return 'chat_only';
         }
 
-        return $highest_level;
+        return 'none';
     }
 
     /**
