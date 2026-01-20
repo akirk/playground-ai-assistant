@@ -9,11 +9,13 @@ An AI-powered chat interface for WordPress Playground. Bring your own API key or
 - **Multiple LLM Providers**: Anthropic (Claude), OpenAI, and local models via Ollama/LM Studio
 - **Browser-Side API Calls**: Connect to local LLMs even when WordPress is hosted remotely
 - **Tool System**: Execute PHP, read/write files, search WordPress docs
-- **Change Tracking**: All AI modifications are tracked with full diff history
+- **Git-Compatible Change Tracking**: All AI modifications are tracked using a git-compatible structure in `wp-content`
 - **Revert & Reapply**: Undo any AI change and optionally reapply it later
 - **Patch Export/Import**: Download changes as `.patch` files or apply patches from elsewhere
+- **Portable History**: Download your Playground zip with full git history intact for local git operations
 - **Conversation History**: Persistent storage with automatic summarization
 - **Streaming Responses**: Real-time output as the AI generates responses
+- **Settings Persistence**: Configuration stored in localStorage, surviving Playground restarts
 
 ## Requirements
 
@@ -56,7 +58,7 @@ Enable the YOLO checkbox to skip confirmation dialogs for tool execution. Use wi
 
 ## AI Changes
 
-Find this under **Tools > AI Changes**. Every file the AI creates or modifies is tracked here.
+Find this under **Tools > AI Changes**. Every file the AI creates or modifies is tracked using a git-compatible structure stored in `wp-content/.git`.
 
 - **View diffs**: Click any file to see exactly what changed
 - **Revert**: Restore any file to its original state
@@ -64,6 +66,23 @@ Find this under **Tools > AI Changes**. Every file the AI creates or modifies is
 - **Export**: Select files and download a unified `.patch` file
 - **Import**: Apply patch files to your installation
 - **PHP Linting**: Automatic syntax checking for PHP files
+- **Git-compatible**: Download your Playground zip and use standard git commands locally
+- **Plugin ZIP downloads**: Modified plugins get a "Download ZIP" link on the Plugins page
+
+### Using Git Locally
+
+When you download your Playground as a ZIP, the `wp-content` folder contains a full git repository with two branches:
+
+- **main**: The original state before AI modifications
+- **ai-changes**: All AI modifications with descriptive commit messages
+
+Each commit is authored by "AI Assistant" and tagged with the conversation ID. To explore:
+
+```bash
+cd wp-content
+git checkout ai-changes -f
+git log
+```
 
 This makes it safe to experiment—you can always undo what the AI did.
 
