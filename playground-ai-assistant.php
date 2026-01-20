@@ -73,8 +73,8 @@ final class AI_Assistant {
     private $tools;
     private $executor;
     private $conversations;
-    private $plugin_downloads;
     private $git_tracker;
+    private $plugin_downloads;
     private $changes_admin;
 
     public static function instance() {
@@ -106,7 +106,7 @@ final class AI_Assistant {
         $this->conversations = new AI_Assistant\Conversations();
         $this->chat_ui = new AI_Assistant\Chat_UI();
         $this->api_handler = new AI_Assistant\API_Handler($this->tools, $this->executor);
-        $this->plugin_downloads = new AI_Assistant\Plugin_Downloads();
+        $this->plugin_downloads = new AI_Assistant\Plugin_Downloads($this->git_tracker);
         $this->changes_admin = new AI_Assistant\Changes_Admin($this->git_tracker);
     }
 
@@ -121,23 +121,50 @@ final class AI_Assistant {
      * Plugin activation
      */
     public function activate() {
-        // Ensure encryption key exists (needed for API key storage)
-        if (!get_option('ai_assistant_encryption_key')) {
-            update_option('ai_assistant_encryption_key', wp_generate_password(32, true, true));
+        $this->register_capabilities();
+
+        // Clean up old options that are no longer used
+        delete_option('ai_assistant_encryption_key');
+        delete_option('ai_assistant_role_permissions');
+        delete_option('ai_assistant_modified_plugins');
+        delete_option('ai_assistant_provider');
+        delete_option('ai_assistant_model');
+        delete_option('ai_assistant_anthropic_api_key');
+        delete_option('ai_assistant_openai_api_key');
+        delete_option('ai_assistant_local_endpoint');
+        delete_option('ai_assistant_local_model');
+        delete_option('ai_assistant_summarization_model');
+    }
+
+    /**
+     * Register AI Assistant capabilities to WordPress roles
+     */
+    private function register_capabilities() {
+        $role_caps = [
+            'administrator' => 'ai_assistant_full',
+            'editor' => 'ai_assistant_read_only',
+            'author' => 'ai_assistant_chat_only',
+            'contributor' => 'ai_assistant_chat_only',
+        ];
+
+        foreach ($role_caps as $role_name => $cap) {
+            $role = get_role($role_name);
+            if ($role) {
+                // Remove any existing AI assistant caps first
+                $role->remove_cap('ai_assistant_full');
+                $role->remove_cap('ai_assistant_read_only');
+                $role->remove_cap('ai_assistant_chat_only');
+                // Add the appropriate cap
+                $role->add_cap($cap);
+            }
         }
 
-        // Set default options
-        if (!get_option('ai_assistant_provider')) {
-            update_option('ai_assistant_provider', 'anthropic');
-        }
-        if (!get_option('ai_assistant_role_permissions')) {
-            update_option('ai_assistant_role_permissions', [
-                'administrator' => 'full',
-                'editor' => 'read_only',
-                'author' => 'chat_only',
-                'contributor' => 'chat_only',
-                'subscriber' => 'none'
-            ]);
+        // Ensure subscriber has no AI caps
+        $subscriber = get_role('subscriber');
+        if ($subscriber) {
+            $subscriber->remove_cap('ai_assistant_full');
+            $subscriber->remove_cap('ai_assistant_read_only');
+            $subscriber->remove_cap('ai_assistant_chat_only');
         }
     }
 

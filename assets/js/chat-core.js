@@ -36,8 +36,8 @@
             this.restoreYoloMode();
             this.loadDraftHistory();
 
-            this.conversationProvider = aiAssistantConfig.provider;
-            this.conversationModel = aiAssistantConfig.model;
+            this.conversationProvider = this.getProvider();
+            this.conversationModel = this.getModel();
             this.updateSendButton();
             this.updateTokenCount();
 
@@ -322,11 +322,7 @@
         },
 
         isProviderConfigured: function() {
-            var provider = aiAssistantConfig.provider;
-            if (provider === 'local') {
-                return true;
-            }
-            return aiAssistantConfig.apiKey && aiAssistantConfig.apiKey.length > 0;
+            return this.isConfigured();
         },
 
         updateSendButton: function() {

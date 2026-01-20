@@ -15,8 +15,8 @@
                 this.pendingActions = [];
                 this.conversationId = 0;
                 this.conversationTitle = '';
-                this.conversationProvider = aiAssistantConfig.provider;
-                this.conversationModel = aiAssistantConfig.model;
+                this.conversationProvider = this.getProvider();
+                this.conversationModel = this.getModel();
                 this.pendingNewChat = false;
                 $('#ai-assistant-messages').removeClass('ai-pending-new-chat').empty();
                 $('#ai-token-count').show();
@@ -38,7 +38,7 @@
         },
 
         callLLM: function() {
-            var provider = this.conversationProvider || aiAssistantConfig.provider || 'anthropic';
+            var provider = this.conversationProvider || this.getProvider();
 
             this.setLoading(true);
 
@@ -122,15 +122,15 @@
 
         callAnthropic: async function() {
             var self = this;
-            var config = aiAssistantConfig;
-            var model = this.conversationModel || config.model;
+            var model = this.conversationModel || this.getModel();
+            var apiKey = this.getApiKey('anthropic');
 
             try {
                 var response = await fetch('https://api.anthropic.com/v1/messages', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'x-api-key': config.apiKey,
+                        'x-api-key': apiKey,
                         'anthropic-version': '2023-06-01',
                         'anthropic-dangerous-direct-browser-access': 'true'
                     },
@@ -233,8 +233,8 @@
 
         callOpenAI: async function() {
             var self = this;
-            var config = aiAssistantConfig;
-            var model = this.conversationModel || config.model;
+            var model = this.conversationModel || this.getModel();
+            var apiKey = this.getApiKey('openai');
 
             try {
                 var requestMessages = [
@@ -246,7 +246,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + config.apiKey
+                        'Authorization': 'Bearer ' + apiKey
                     },
                     body: JSON.stringify({
                         model: model,
@@ -328,8 +328,7 @@
 
         callLocalLLM: async function() {
             var self = this;
-            var config = aiAssistantConfig;
-            var endpoint = (config.localEndpoint || 'http://localhost:11434').replace(/\/$/, '');
+            var endpoint = this.getLocalEndpoint().replace(/\/$/, '');
 
             try {
                 var requestMessages = [
@@ -337,7 +336,7 @@
                     ...this.messages
                 ];
 
-                var model = this.conversationModel || config.model;
+                var model = this.conversationModel || this.getModel();
                 var useOllamaApi = false;
 
                 var response = await fetch(endpoint + '/v1/chat/completions', {
@@ -472,8 +471,8 @@
 
         // Summarization API calls
         generateConversationSummary: function(convData) {
-            var provider = aiAssistantConfig.provider;
-            var model = aiAssistantConfig.summarizationModel || aiAssistantConfig.model;
+            var provider = this.getProvider();
+            var model = this.getSummarizationModel() || this.getModel();
 
             var summaryPrompt = 'Summarize this conversation concisely. Include:\n' +
                 '1. Main topics discussed\n' +
@@ -494,12 +493,13 @@
         },
 
         callAnthropicForSummary: function(model, prompt) {
+            var apiKey = this.getApiKey('anthropic');
             return new Promise(function(resolve, reject) {
                 fetch('https://api.anthropic.com/v1/messages', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'x-api-key': aiAssistantConfig.apiKey,
+                        'x-api-key': apiKey,
                         'anthropic-version': '2023-06-01',
                         'anthropic-dangerous-direct-browser-access': 'true'
                     },
@@ -523,12 +523,13 @@
         },
 
         callOpenAIForSummary: function(model, prompt) {
+            var apiKey = this.getApiKey('openai');
             return new Promise(function(resolve, reject) {
                 fetch('https://api.openai.com/v1/chat/completions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + aiAssistantConfig.apiKey
+                        'Authorization': 'Bearer ' + apiKey
                     },
                     body: JSON.stringify({
                         model: model,
@@ -551,8 +552,7 @@
 
         callLocalForSummary: function(model, prompt) {
             var self = this;
-            var endpoint = aiAssistantConfig.localEndpoint || 'http://localhost:11434';
-            endpoint = endpoint.replace(/\/$/, '');
+            var endpoint = this.getLocalEndpoint().replace(/\/$/, '');
 
             return new Promise(function(resolve, reject) {
                 fetch(endpoint + '/v1/chat/completions', {

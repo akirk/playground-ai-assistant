@@ -29,10 +29,11 @@ class API_Handler {
     public function handle_execute_tool() {
         check_ajax_referer('ai_assistant_chat', '_wpnonce');
 
-        $permission = ai_assistant()->settings()->get_user_permission_level();
-        if ($permission === 'none' || $permission === 'chat_only') {
-            wp_send_json_error(['message' => 'Tool execution not allowed (permission: ' . $permission . ')']);
+        if (!current_user_can('ai_assistant_full') && !current_user_can('ai_assistant_read_only')) {
+            wp_send_json_error(['message' => 'Tool execution not allowed']);
         }
+
+        $permission = current_user_can('ai_assistant_full') ? 'full' : 'read_only';
 
         $tool_name = sanitize_text_field($_POST['tool'] ?? '');
         $arguments_json = stripslashes($_POST['arguments'] ?? '{}');
