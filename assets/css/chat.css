@@ -243,10 +243,6 @@
     align-self: flex-end;
 }
 
-.ai-message-user .ai-message-actions {
-    justify-content: flex-end;
-}
-
 .ai-message-assistant,
 .ai-message-error,
 .ai-message-system {
@@ -284,22 +280,28 @@
     border: 1px solid #dba617;
 }
 
-/* Message action buttons */
+/* Message action buttons - overlay style */
+.ai-message {
+    position: relative;
+}
+
 .ai-message-actions {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
     display: flex;
     gap: 2px;
-    margin-top: 0;
-    max-height: 0;
-    overflow: hidden;
     opacity: 0;
-    transition: opacity 0.15s, max-height 0.15s, margin-top 0.15s;
+    transition: opacity 0.15s;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 4px;
+    padding: 2px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .ai-message:hover .ai-message-actions,
 .ai-message-actions:focus-within {
     opacity: 1;
-    max-height: 28px;
-    margin-top: 6px;
 }
 
 .ai-message-streaming .ai-message-actions {
