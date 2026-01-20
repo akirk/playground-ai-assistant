@@ -102,12 +102,15 @@ class Chat_UI {
 
         $settings = ai_assistant()->settings();
 
+        $current_user = wp_get_current_user();
+
         wp_localize_script('ai-assistant-chat-core', 'aiAssistantConfig', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('ai_assistant_chat'),
             'userPermission' => $settings->get_user_permission_level(),
             'settingsUrl' => admin_url('options-general.php?page=ai-assistant-settings'),
             'homeUrl' => home_url(),
+            'userDisplayName' => $current_user->display_name,
             'systemPrompt' => $settings->get_system_prompt(),
             'strings' => [
                 'placeholder' => __('Ask me anything about your WordPress site...', 'ai-assistant'),

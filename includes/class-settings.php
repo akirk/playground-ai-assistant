@@ -1028,12 +1028,14 @@ class Settings {
             $current_path = substr($current_path, strlen($site_path)) ?: '/';
         }
         $page_hints = $this->get_page_selector_hints();
+        $current_user = wp_get_current_user();
         $wp_info = [
             'siteUrl' => get_site_url(),
             'currentPath' => $current_path,
             'wpVersion' => get_bloginfo('version'),
             'theme' => get_template(),
             'phpVersion' => phpversion(),
+            'userDisplayName' => $current_user->display_name,
         ];
 
         $prompt = <<<PROMPT
@@ -1045,6 +1047,7 @@ Current WordPress Information:
 - WordPress Version: {$wp_info['wpVersion']}
 - Active Theme: {$wp_info['theme']}
 - PHP Version: {$wp_info['phpVersion']}
+- User: {$wp_info['userDisplayName']}
 PROMPT;
 
         if ($page_hints) {
