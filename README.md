@@ -7,8 +7,7 @@ An AI-powered chat interface for WordPress Playground. Bring your own API key or
 ## Features
 
 - **Multiple LLM Providers**: Anthropic (Claude), OpenAI, and local models via Ollama/LM Studio
-- **Browser-Side API Calls**: Connect to local LLMs even when WordPress is hosted remotely
-- **Tool System**: Execute PHP, read/write files, search WordPress docs
+- **Tool System**: Execute PHP, read/write/edit files, query the database, manage plugins and themes
 - **Git-Compatible Change Tracking**: All AI modifications are tracked using a git-compatible structure in `wp-content`
 - **Revert & Reapply**: Undo any AI change and optionally reapply it later
 - **Patch Export/Import**: Download changes as `.patch` files or apply patches from elsewhere
@@ -46,11 +45,24 @@ The AI Assistant panel appears in the WordPress admin screen meta area (alongsid
 
 | Tool | Description |
 |------|-------------|
+| `read_file` | Read file contents |
+| `write_file` | Create new files |
+| `edit_file` | Edit existing files via search/replace |
+| `delete_file` | Delete files |
+| `list_directory` | List directory contents |
+| `search_files` | Search for files by glob pattern |
+| `search_content` | Search for text within files |
+| `db_query` | Execute SELECT queries on the database |
+| `get_plugins` | List installed plugins |
+| `get_themes` | List installed themes |
+| `install_plugin` | Install a plugin from WordPress.org |
 | `run_php` | Execute PHP code |
-| `read_files` | Read file contents |
-| `write_file` | Create or modify files |
-| `get_page_html` | Fetch current page HTML |
-| `search_wordpress_docs` | Search WordPress documentation |
+| `list_abilities` | Discover available WordPress abilities |
+| `get_ability` | Get details of a specific ability |
+| `execute_ability` | Execute a WordPress ability |
+| `navigate` | Navigate to a URL within the site |
+| `get_page_html` | Get HTML of the current page |
+| `summarize_conversation` | Generate a conversation summary |
 
 ### YOLO Mode
 
