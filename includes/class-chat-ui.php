@@ -45,17 +45,17 @@ class Chat_UI {
         );
 
         wp_enqueue_script(
-            'ai-assistant-chat-settings',
-            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-settings.js',
+            'ai-assistant-chat-core',
+            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-core.js',
             ['jquery'],
             AI_ASSISTANT_VERSION,
             true
         );
 
         wp_enqueue_script(
-            'ai-assistant-chat-core',
-            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-core.js',
-            ['jquery', 'ai-assistant-chat-settings'],
+            'ai-assistant-chat-settings',
+            AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-settings.js',
+            ['ai-assistant-chat-core'],
             AI_ASSISTANT_VERSION,
             true
         );
@@ -71,7 +71,7 @@ class Chat_UI {
         wp_enqueue_script(
             'ai-assistant-chat-providers',
             AI_ASSISTANT_PLUGIN_URL . 'assets/js/chat-providers.js',
-            ['ai-assistant-chat-core'],
+            ['ai-assistant-chat-core', 'ai-assistant-chat-settings'],
             AI_ASSISTANT_VERSION,
             true
         );

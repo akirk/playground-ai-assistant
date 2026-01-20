@@ -3,9 +3,6 @@
 
     var STORAGE_PREFIX = 'aiAssistant_';
 
-    // Ensure namespace exists (this script may load before chat-core.js)
-    window.aiAssistant = window.aiAssistant || {};
-
     $.extend(window.aiAssistant, {
         getSetting: function(key) {
             try {
