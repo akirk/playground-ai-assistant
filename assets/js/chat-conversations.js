@@ -203,6 +203,8 @@
                 return;
             }
 
+            var messagesToSave = this.messages.filter(function(m) { return !m._internal; });
+
             $.ajax({
                 url: aiAssistantConfig.ajaxUrl,
                 type: 'POST',
@@ -210,7 +212,7 @@
                     action: 'ai_assistant_save_conversation',
                     _wpnonce: aiAssistantConfig.nonce,
                     conversation_id: this.conversationId,
-                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(this.messages)))),
+                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(messagesToSave)))),
                     title: this.conversationTitle,
                     provider: aiAssistantConfig.provider,
                     model: aiAssistantConfig.model
@@ -264,6 +266,8 @@
                 return;
             }
 
+            var messagesToSave = this.messages.filter(function(m) { return !m._internal; });
+
             $.ajax({
                 url: aiAssistantConfig.ajaxUrl,
                 type: 'POST',
@@ -271,7 +275,7 @@
                     action: 'ai_assistant_save_conversation',
                     _wpnonce: aiAssistantConfig.nonce,
                     conversation_id: this.conversationId,
-                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(this.messages)))),
+                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(messagesToSave)))),
                     title: this.conversationTitle,
                     provider: this.conversationProvider,
                     model: this.conversationModel
@@ -435,7 +439,7 @@
                         contextMsg += '=== ' + file.path + ' ===\n' + content + '\n\n';
                     });
 
-                    self.messages.push({ role: 'user', content: contextMsg });
+                    self.messages.push({ role: 'user', content: contextMsg, _internal: true });
                     self.addMessage('system', 'Loaded ' + fileContents.length + ' file(s) from previous session for context.');
                 }
             });

@@ -244,6 +244,9 @@
             var self = this;
 
             this.messages.forEach(function(msg) {
+                if (msg._internal) {
+                    return;
+                }
                 if (msg.role === 'user') {
                     if (typeof msg.content === 'string' && msg.content.trim()) {
                         self.addMessage('user', msg.content);
