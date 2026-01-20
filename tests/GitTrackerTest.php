@@ -603,4 +603,71 @@ class GitTrackerTest extends TestCase {
 
         unlink($test_file);
     }
+
+    // -------------------------------------------------------------------------
+    // build_standalone_git tests
+    // -------------------------------------------------------------------------
+
+    public function test_build_standalone_git_preserves_individual_commit_messages(): void {
+        // Create plugin directory structure
+        $plugin_dir = $this->test_dir . '/plugins/test-plugin';
+        mkdir($plugin_dir, 0755, true);
+
+        $test_file = $plugin_dir . '/file.php';
+
+        // First change
+        file_put_contents($test_file, '<?php echo "v1";');
+        $this->tracker->track_change($test_file, 'modified', '<?php echo "original";', 'First feature');
+
+        // Second change
+        file_put_contents($test_file, '<?php echo "v2";');
+        $this->tracker->track_change($test_file, 'modified', '<?php echo "original";', 'Bug fix');
+
+        // Third change
+        file_put_contents($test_file, '<?php echo "v3";');
+        $this->tracker->track_change($test_file, 'modified', '<?php echo "original";', 'Refactoring');
+
+        // Build standalone git
+        $target_dir = $this->test_dir . '/standalone';
+        mkdir($target_dir, 0755, true);
+
+        $result = $this->tracker->build_standalone_git('plugins/test-plugin', $target_dir);
+        $this->assertTrue($result);
+
+        // Read commits from standalone git using git log
+        $git_dir = $target_dir . '/.git';
+        $this->assertDirectoryExists($git_dir);
+
+        // Parse commit log from ai-changes branch
+        $ref_content = file_get_contents($git_dir . '/refs/heads/ai-changes');
+        $this->assertNotEmpty($ref_content);
+
+        // Walk commits and collect messages
+        $messages = [];
+        $commit_sha = trim($ref_content);
+        while ($commit_sha) {
+            $object_path = $git_dir . '/objects/' . substr($commit_sha, 0, 2) . '/' . substr($commit_sha, 2);
+            if (!file_exists($object_path)) {
+                break;
+            }
+            $raw = gzuncompress(file_get_contents($object_path));
+            $content = substr($raw, strpos($raw, "\0") + 1);
+            $parts = explode("\n\n", $content, 2);
+            $message = isset($parts[1]) ? trim($parts[1]) : '';
+            if ($message) {
+                $messages[] = $message;
+            }
+
+            if (preg_match('/^parent ([a-f0-9]{40})/m', $content, $matches)) {
+                $commit_sha = $matches[1];
+            } else {
+                break;
+            }
+        }
+
+        // Verify individual commit messages are preserved (newest first)
+        $this->assertContains('Refactoring', $messages);
+        $this->assertContains('Bug fix', $messages);
+        $this->assertContains('First feature', $messages);
+    }
 }

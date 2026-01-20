@@ -43,7 +43,7 @@ class Git_Tracker {
                 $this->add_created_file($relative_path);
             }
             // Update ai-changes branch with current file content
-            $this->update_ai_changes_branch($relative_path, $reason);
+            $this->update_ai_changes_branch($reason);
             return true;
         }
 
@@ -58,7 +58,7 @@ class Git_Tracker {
         }
 
         // Update ai-changes branch with current file content
-        $this->update_ai_changes_branch($relative_path, $reason);
+        $this->update_ai_changes_branch($reason);
 
         return true;
     }
@@ -873,7 +873,7 @@ class Git_Tracker {
 
         $this->write_index([]);
         $this->write_created_files([]);
-        $this->create_initial_commit();
+        // Don't create an empty initial commit - the first update_commit() will create it with actual content
     }
 
     private function to_relative_path(string $path): ?string {
@@ -1096,7 +1096,7 @@ class Git_Tracker {
     /**
      * Update the ai-changes branch with current working directory state of tracked files.
      */
-    private function update_ai_changes_branch(string $changed_path = '', string $reason = ''): void {
+    private function update_ai_changes_branch(string $reason = ''): void {
         $entries = $this->read_index();
         $created = $this->get_created_files();
 
@@ -1171,28 +1171,54 @@ class Git_Tracker {
             $parts = explode("\n\n", $commit_data['content'], 2);
             $message = isset($parts[1]) ? trim($parts[1]) : '';
 
-            // Check if message mentions a file in our prefix
-            if ($message && strpos($message, $path_prefix) === 0) {
-                // Get tree SHA from commit
-                if (preg_match('/^tree ([a-f0-9]{40})/m', $commit_data['content'], $matches)) {
-                    $tree_sha = $matches[1];
+            // Get tree SHA from commit
+            if (!preg_match('/^tree ([a-f0-9]{40})/m', $commit_data['content'], $matches)) {
+                break;
+            }
+            $tree_sha = $matches[1];
 
-                    // Get files from this commit's tree that match our prefix
-                    $files = $this->get_files_from_tree_with_prefix($tree_sha, $path_prefix);
+            // Get parent commit SHA
+            $parent_sha = null;
+            if (preg_match('/^parent ([a-f0-9]{40})/m', $commit_data['content'], $matches)) {
+                $parent_sha = $matches[1];
+            }
 
-                    $commits[] = [
-                        'message' => substr($message, strlen($path_prefix)), // Strip prefix
-                        'files' => $files,
-                    ];
+            // Get files from this commit's tree that match our prefix
+            $current_files = $this->get_files_from_tree_with_prefix($tree_sha, $path_prefix);
+
+            // Get files from parent's tree to compare
+            $parent_files = [];
+            if ($parent_sha) {
+                $parent_data = $this->read_object($parent_sha);
+                if ($parent_data && preg_match('/^tree ([a-f0-9]{40})/m', $parent_data['content'], $matches)) {
+                    $parent_files = $this->get_files_from_tree_with_prefix($matches[1], $path_prefix);
                 }
             }
 
-            // Get parent commit
-            if (preg_match('/^parent ([a-f0-9]{40})/m', $commit_data['content'], $matches)) {
-                $commit_sha = $matches[1];
-            } else {
-                break;
+            // Detect changes in files matching our prefix
+            $changed_files = [];
+            foreach ($current_files as $path => $content) {
+                if (!isset($parent_files[$path]) || $parent_files[$path] !== $content) {
+                    $changed_files[$path] = $content;
+                }
             }
+            // Detect deletions
+            foreach ($parent_files as $path => $content) {
+                if (!isset($current_files[$path])) {
+                    $changed_files[$path] = null;
+                }
+            }
+
+            // If any files in our prefix changed, include this commit
+            if (!empty($changed_files) && $message) {
+                $commits[] = [
+                    'message' => $message,
+                    'files' => $current_files,
+                ];
+            }
+
+            // Move to parent
+            $commit_sha = $parent_sha;
         }
 
         return array_reverse($commits); // Chronological order
@@ -1371,12 +1397,6 @@ class Git_Tracker {
     // Private: Commit operations
     // -------------------------------------------------------------------------
 
-    private function create_initial_commit(): void {
-        $empty_tree = $this->write_tree([]);
-        $commit_sha = $this->write_commit($empty_tree, null, "Initial commit");
-        file_put_contents($this->git_dir . '/refs/heads/main', $commit_sha . "\n");
-    }
-
     private function update_commit(): void {
         $entries = $this->read_index();
 
@@ -1386,10 +1406,12 @@ class Git_Tracker {
         }
 
         $tree_sha = $this->build_tree($files);
-        $parent = trim(@file_get_contents($this->git_dir . '/refs/heads/main'));
-        $commit_sha = $this->write_commit($tree_sha, $parent ?: null, "Track AI changes");
+        $ref_path = $this->git_dir . '/refs/heads/main';
+        $parent = file_exists($ref_path) ? trim(file_get_contents($ref_path)) : null;
+        $message = $parent ? "Track AI changes" : "Original state before AI modifications";
+        $commit_sha = $this->write_commit($tree_sha, $parent, $message);
 
-        file_put_contents($this->git_dir . '/refs/heads/main', $commit_sha . "\n");
+        file_put_contents($ref_path, $commit_sha . "\n");
     }
 
     private function write_tree(array $entries): string {
