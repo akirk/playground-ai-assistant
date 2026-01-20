@@ -627,6 +627,234 @@ class Git_Tracker {
         return !empty($entries) || !empty($created);
     }
 
+    /**
+     * Get paginated commit log from ai-changes branch.
+     */
+    public function get_commit_log(int $limit = 20, int $offset = 0): array {
+        if (!$this->is_active()) {
+            return ['commits' => [], 'has_more' => false];
+        }
+
+        $ref_path = $this->git_dir . '/refs/heads/ai-changes';
+        if (!file_exists($ref_path)) {
+            return ['commits' => [], 'has_more' => false];
+        }
+
+        $commits = [];
+        $sha = trim(file_get_contents($ref_path));
+        $skipped = 0;
+
+        while ($sha && count($commits) < $limit + 1) {
+            $commit_data = $this->read_object($sha);
+            if ($commit_data === null || $commit_data['type'] !== 'commit') {
+                break;
+            }
+
+            $content = $commit_data['content'];
+
+            $tree = null;
+            $parent = null;
+            $timestamp = null;
+            $message = '';
+
+            $lines = explode("\n", $content);
+            $in_message = false;
+
+            foreach ($lines as $line) {
+                if ($in_message) {
+                    $message .= ($message ? "\n" : '') . $line;
+                } elseif ($line === '') {
+                    $in_message = true;
+                } elseif (strpos($line, 'tree ') === 0) {
+                    $tree = substr($line, 5);
+                } elseif (strpos($line, 'parent ') === 0) {
+                    $parent = substr($line, 7);
+                } elseif (strpos($line, 'author ') === 0) {
+                    if (preg_match('/(\d+)\s+[+-]\d{4}$/', $line, $m)) {
+                        $timestamp = (int) $m[1];
+                    }
+                }
+            }
+
+            if ($skipped < $offset) {
+                $skipped++;
+                $sha = $parent;
+                continue;
+            }
+
+            $commits[] = [
+                'sha' => $sha,
+                'short_sha' => substr($sha, 0, 7),
+                'tree' => $tree,
+                'parent' => $parent,
+                'message' => trim($message),
+                'timestamp' => $timestamp,
+                'date' => $timestamp ? date('Y-m-d H:i:s', $timestamp) : null,
+            ];
+
+            $sha = $parent;
+        }
+
+        $has_more = count($commits) > $limit;
+        if ($has_more) {
+            array_pop($commits);
+        }
+
+        return ['commits' => $commits, 'has_more' => $has_more];
+    }
+
+    /**
+     * Get the diff for a specific commit compared to its parent.
+     */
+    public function get_commit_diff(string $sha): string {
+        if (!$this->is_active()) {
+            return '';
+        }
+
+        $commit_data = $this->read_object($sha);
+        if ($commit_data === null || $commit_data['type'] !== 'commit') {
+            return '';
+        }
+
+        $tree_sha = null;
+        $parent_sha = null;
+
+        if (preg_match('/^tree ([a-f0-9]{40})/m', $commit_data['content'], $m)) {
+            $tree_sha = $m[1];
+        }
+        if (preg_match('/^parent ([a-f0-9]{40})/m', $commit_data['content'], $m)) {
+            $parent_sha = $m[1];
+        }
+
+        if (!$tree_sha) {
+            return '';
+        }
+
+        $current_files = $this->get_tree_files($tree_sha, '');
+
+        $parent_files = [];
+        if ($parent_sha) {
+            $parent_data = $this->read_object($parent_sha);
+            if ($parent_data && preg_match('/^tree ([a-f0-9]{40})/m', $parent_data['content'], $m)) {
+                $parent_files = $this->get_tree_files($m[1], '');
+            }
+        }
+
+        $all_paths = array_unique(array_merge(array_keys($current_files), array_keys($parent_files)));
+        $diffs = [];
+
+        foreach ($all_paths as $path) {
+            $old_sha = $parent_files[$path] ?? null;
+            $new_sha = $current_files[$path] ?? null;
+
+            if ($old_sha === $new_sha) {
+                continue;
+            }
+
+            $old_content = $old_sha ? $this->read_blob($old_sha) : null;
+            $new_content = $new_sha ? $this->read_blob($new_sha) : null;
+
+            if ($old_content === null && $new_content !== null) {
+                $diffs[] = $this->format_diff($path, '', $new_content, 'created');
+            } elseif ($old_content !== null && $new_content === null) {
+                $diffs[] = $this->format_diff($path, $old_content, '', 'deleted');
+            } else {
+                $diffs[] = $this->format_diff($path, $old_content ?? '', $new_content ?? '', 'modified');
+            }
+        }
+
+        return implode("\n", $diffs);
+    }
+
+    /**
+     * Revert all files to the state at a specific commit.
+     */
+    public function revert_to_commit(string $target_sha): array {
+        if (!$this->is_active()) {
+            return ['success' => false, 'errors' => ['Tracking not active']];
+        }
+
+        $commit_data = $this->read_object($target_sha);
+        if ($commit_data === null || $commit_data['type'] !== 'commit') {
+            return ['success' => false, 'errors' => ['Invalid commit SHA']];
+        }
+
+        if (!preg_match('/^tree ([a-f0-9]{40})/m', $commit_data['content'], $matches)) {
+            return ['success' => false, 'errors' => ['Could not parse commit tree']];
+        }
+        $target_tree = $matches[1];
+
+        $target_files = $this->get_tree_files($target_tree, '');
+
+        $entries = $this->read_index();
+        $created = $this->get_created_files();
+        $all_tracked = array_merge(array_keys($entries), $created);
+
+        $reverted = [];
+        $errors = [];
+
+        foreach ($all_tracked as $path) {
+            $full_path = $this->work_tree . '/' . $path;
+
+            if (isset($target_files[$path])) {
+                $content = $this->read_blob($target_files[$path]);
+                if ($content !== null) {
+                    $dir = dirname($full_path);
+                    if (!is_dir($dir)) {
+                        mkdir($dir, 0755, true);
+                    }
+                    file_put_contents($full_path, $content);
+                    $reverted[] = $path;
+                } else {
+                    $errors[] = "Could not read content for: $path";
+                }
+            } else {
+                if (in_array($path, $created)) {
+                    if (file_exists($full_path)) {
+                        unlink($full_path);
+                        $reverted[] = $path;
+                    }
+                } elseif (isset($entries[$path])) {
+                    $original = $this->read_blob($entries[$path]['sha']);
+                    if ($original !== null) {
+                        file_put_contents($full_path, $original);
+                        $reverted[] = $path;
+                    }
+                }
+            }
+        }
+
+        return [
+            'success' => empty($errors),
+            'reverted' => $reverted,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Recursively get all files from a tree object (path => blob SHA).
+     */
+    private function get_tree_files(string $tree_sha, string $prefix): array {
+        $tree_data = $this->read_object($tree_sha);
+        if ($tree_data === null || $tree_data['type'] !== 'tree') {
+            return [];
+        }
+
+        $files = [];
+        $entries = $this->parse_tree($tree_data['content']);
+
+        foreach ($entries as $entry) {
+            $path = $prefix ? $prefix . '/' . $entry['name'] : $entry['name'];
+            if ($entry['mode'] === '40000') {
+                $files = array_merge($files, $this->get_tree_files($entry['sha'], $path));
+            } else {
+                $files[$path] = $entry['sha'];
+            }
+        }
+
+        return $files;
+    }
+
     // -------------------------------------------------------------------------
     // Private: Git structure management
     // -------------------------------------------------------------------------
@@ -902,19 +1130,16 @@ class Git_Tracker {
         // Build tree and create commit
         $tree_sha = $this->build_tree($files);
 
-        // Get current ai-changes commit as parent (if exists)
-        $parent = null;
+        // Get parent commit: use ai-changes if it exists, otherwise use main
         $ref_path = $this->git_dir . '/refs/heads/ai-changes';
         if (file_exists($ref_path)) {
             $parent = trim(file_get_contents($ref_path));
+        } else {
+            $main_ref = $this->git_dir . '/refs/heads/main';
+            $parent = file_exists($main_ref) ? trim(file_get_contents($main_ref)) : null;
         }
 
-        // Build commit message from path and reason
         $message = $reason ?: 'AI modification';
-        if ($changed_path) {
-            $message = $changed_path . ': ' . $message;
-        }
-
         $commit_sha = $this->write_commit($tree_sha, $parent, $message);
 
         // Update ref and HEAD

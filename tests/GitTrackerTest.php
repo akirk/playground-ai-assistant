@@ -417,4 +417,190 @@ class GitTrackerTest extends TestCase {
 
         unlink($test_file);
     }
+
+    // -------------------------------------------------------------------------
+    // get_commit_log tests
+    // -------------------------------------------------------------------------
+
+    public function test_get_commit_log_returns_empty_when_inactive(): void {
+        $result = $this->tracker->get_commit_log();
+
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('commits', $result);
+        $this->assertArrayHasKey('has_more', $result);
+        $this->assertEmpty($result['commits']);
+        $this->assertFalse($result['has_more']);
+    }
+
+    public function test_get_commit_log_returns_commits(): void {
+        $test_file = $this->test_dir . '/test.txt';
+        file_put_contents($test_file, 'modified content');
+
+        $this->tracker->track_change($test_file, 'modified', 'original content', 'Test commit message');
+
+        $result = $this->tracker->get_commit_log();
+
+        $this->assertNotEmpty($result['commits']);
+        $this->assertArrayHasKey('sha', $result['commits'][0]);
+        $this->assertArrayHasKey('short_sha', $result['commits'][0]);
+        $this->assertArrayHasKey('message', $result['commits'][0]);
+        $this->assertArrayHasKey('timestamp', $result['commits'][0]);
+        $this->assertEquals('Test commit message', $result['commits'][0]['message']);
+
+        unlink($test_file);
+    }
+
+    public function test_get_commit_log_returns_multiple_commits(): void {
+        $test_file = $this->test_dir . '/test.txt';
+
+        file_put_contents($test_file, 'version 1');
+        $this->tracker->track_change($test_file, 'modified', 'original', 'First commit');
+
+        file_put_contents($test_file, 'version 2');
+        $this->tracker->track_change($test_file, 'modified', 'original', 'Second commit');
+
+        file_put_contents($test_file, 'version 3');
+        $this->tracker->track_change($test_file, 'modified', 'original', 'Third commit');
+
+        $result = $this->tracker->get_commit_log();
+
+        $this->assertGreaterThanOrEqual(3, count($result['commits']));
+        $this->assertEquals('Third commit', $result['commits'][0]['message']);
+        $this->assertEquals('Second commit', $result['commits'][1]['message']);
+        $this->assertEquals('First commit', $result['commits'][2]['message']);
+
+        unlink($test_file);
+    }
+
+    public function test_get_commit_log_respects_limit(): void {
+        $test_file = $this->test_dir . '/test.txt';
+
+        for ($i = 1; $i <= 5; $i++) {
+            file_put_contents($test_file, "version $i");
+            $this->tracker->track_change($test_file, 'modified', 'original', "Commit $i");
+        }
+
+        $result = $this->tracker->get_commit_log(2);
+
+        $this->assertCount(2, $result['commits']);
+        $this->assertTrue($result['has_more']);
+
+        unlink($test_file);
+    }
+
+    // -------------------------------------------------------------------------
+    // get_commit_diff tests
+    // -------------------------------------------------------------------------
+
+    public function test_get_commit_diff_returns_empty_when_inactive(): void {
+        $diff = $this->tracker->get_commit_diff('invalid-sha');
+
+        $this->assertEquals('', $diff);
+    }
+
+    public function test_get_commit_diff_returns_diff_for_valid_commit(): void {
+        $test_file = $this->test_dir . '/test.txt';
+        file_put_contents($test_file, "line1\nline2\nmodified");
+
+        $this->tracker->track_change($test_file, 'modified', "line1\nline2\noriginal", 'Test change');
+
+        $commits = $this->tracker->get_commit_log();
+        $sha = $commits['commits'][0]['sha'];
+
+        $diff = $this->tracker->get_commit_diff($sha);
+
+        $this->assertStringContainsString('diff --git', $diff);
+        $this->assertStringContainsString('-original', $diff);
+        $this->assertStringContainsString('+modified', $diff);
+
+        unlink($test_file);
+    }
+
+    public function test_get_commit_diff_shows_created_file(): void {
+        $test_file = $this->test_dir . '/new.txt';
+        file_put_contents($test_file, 'new content');
+
+        $this->tracker->track_change($test_file, 'created', null, 'Created file');
+
+        $commits = $this->tracker->get_commit_log();
+        $sha = $commits['commits'][0]['sha'];
+
+        $diff = $this->tracker->get_commit_diff($sha);
+
+        $this->assertStringContainsString('new file mode', $diff);
+        $this->assertStringContainsString('+new content', $diff);
+
+        unlink($test_file);
+    }
+
+    // -------------------------------------------------------------------------
+    // revert_to_commit tests
+    // -------------------------------------------------------------------------
+
+    public function test_revert_to_commit_returns_error_when_inactive(): void {
+        $result = $this->tracker->revert_to_commit('invalid-sha');
+
+        $this->assertFalse($result['success']);
+        $this->assertContains('Tracking not active', $result['errors']);
+    }
+
+    public function test_revert_to_commit_returns_error_for_invalid_sha(): void {
+        $test_file = $this->test_dir . '/test.txt';
+        file_put_contents($test_file, 'content');
+
+        $this->tracker->track_change($test_file, 'modified', 'original', 'Test');
+
+        $result = $this->tracker->revert_to_commit('0000000000000000000000000000000000000000');
+
+        $this->assertFalse($result['success']);
+        $this->assertContains('Invalid commit SHA', $result['errors']);
+
+        unlink($test_file);
+    }
+
+    public function test_revert_to_commit_restores_file_content(): void {
+        $test_file = $this->test_dir . '/test.txt';
+
+        file_put_contents($test_file, 'version 1');
+        $this->tracker->track_change($test_file, 'modified', 'original', 'First');
+
+        $commits_after_first = $this->tracker->get_commit_log();
+        $first_commit_sha = $commits_after_first['commits'][0]['sha'];
+
+        file_put_contents($test_file, 'version 2');
+        $this->tracker->track_change($test_file, 'modified', 'original', 'Second');
+
+        file_put_contents($test_file, 'version 3');
+        $this->tracker->track_change($test_file, 'modified', 'original', 'Third');
+
+        $this->assertEquals('version 3', file_get_contents($test_file));
+
+        $result = $this->tracker->revert_to_commit($first_commit_sha);
+
+        $this->assertTrue($result['success']);
+        $this->assertEquals('version 1', file_get_contents($test_file));
+
+        unlink($test_file);
+    }
+
+    public function test_revert_to_commit_reports_reverted_files(): void {
+        $test_file = $this->test_dir . '/test.txt';
+
+        file_put_contents($test_file, 'version 1');
+        $this->tracker->track_change($test_file, 'modified', 'original', 'First');
+
+        $commits = $this->tracker->get_commit_log();
+        $first_sha = $commits['commits'][0]['sha'];
+
+        file_put_contents($test_file, 'version 2');
+        $this->tracker->track_change($test_file, 'modified', 'original', 'Second');
+
+        $result = $this->tracker->revert_to_commit($first_sha);
+
+        $this->assertTrue($result['success']);
+        $this->assertNotEmpty($result['reverted']);
+        $this->assertContains('test.txt', $result['reverted']);
+
+        unlink($test_file);
+    }
 }

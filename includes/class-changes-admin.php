@@ -24,6 +24,9 @@ class Changes_Admin {
         add_action('wp_ajax_ai_assistant_reapply_file', [$this, 'ajax_reapply_file']);
         add_action('wp_ajax_ai_assistant_revert_files', [$this, 'ajax_revert_files']);
         add_action('wp_ajax_ai_assistant_lint_php', [$this, 'ajax_lint_php']);
+        add_action('wp_ajax_ai_assistant_get_commit_log', [$this, 'ajax_get_commit_log']);
+        add_action('wp_ajax_ai_assistant_get_commit_diff', [$this, 'ajax_get_commit_diff']);
+        add_action('wp_ajax_ai_assistant_revert_to_commit', [$this, 'ajax_revert_to_commit']);
         add_action('admin_action_ai_assistant_download_diff', [$this, 'handle_diff_download']);
     }
 
@@ -82,6 +85,16 @@ class Changes_Admin {
                 'nothingToRevert' => __('No files to revert in this directory.', 'ai-assistant'),
                 'syntaxError' => __('Syntax Error', 'ai-assistant'),
                 'syntaxOk' => __('Syntax OK', 'ai-assistant'),
+                'confirmRevertToCommit' => __('Are you sure you want to revert all files to this commit? This will restore files to how they were at that point.', 'ai-assistant'),
+                'revertingToCommit' => __('Reverting...', 'ai-assistant'),
+                'revertToCommitError' => __('Failed to revert to commit.', 'ai-assistant'),
+                'loading' => __('Loading...', 'ai-assistant'),
+                'loadMore' => __('Load more', 'ai-assistant'),
+                'current' => __('(current)', 'ai-assistant'),
+                'revertToHere' => __('Revert to here', 'ai-assistant'),
+                'revertToCommitTitle' => __('Revert files to this commit', 'ai-assistant'),
+                'justNow' => __('just now', 'ai-assistant'),
+                'noCommits' => __('No commits yet', 'ai-assistant'),
             ],
         ]);
     }
@@ -150,6 +163,17 @@ class Changes_Admin {
                 <button type="button" class="button" id="ai-clear-history">
                     <?php esc_html_e('Clear History', 'ai-assistant'); ?>
                 </button>
+            </div>
+
+            <div class="ai-commit-log">
+                <div class="ai-commit-log-header">
+                    <span class="ai-commit-log-toggle">▶</span>
+                    <strong><?php esc_html_e('Commit History', 'ai-assistant'); ?></strong>
+                    <span class="ai-commit-log-count"></span>
+                </div>
+                <div class="ai-commit-log-list" style="display: none;">
+                    <div class="ai-commit-log-loading"><?php esc_html_e('Loading...', 'ai-assistant'); ?></div>
+                </div>
             </div>
 
             <div class="ai-changes-tree">
@@ -495,6 +519,64 @@ class Changes_Admin {
                 'error' => $e->getMessage(),
                 'line' => $e->getLine(),
             ];
+        }
+    }
+
+    public function ajax_get_commit_log(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $limit = isset($_POST['limit']) ? (int) $_POST['limit'] : 20;
+        $offset = isset($_POST['offset']) ? (int) $_POST['offset'] : 0;
+
+        $result = $this->git_tracker->get_commit_log($limit, $offset);
+        wp_send_json_success($result);
+    }
+
+    public function ajax_get_commit_diff(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $sha = isset($_POST['sha']) ? sanitize_text_field($_POST['sha']) : '';
+
+        if (empty($sha)) {
+            wp_send_json_error(['message' => 'No commit SHA specified']);
+        }
+
+        $diff = $this->git_tracker->get_commit_diff($sha);
+        wp_send_json_success(['diff' => $diff]);
+    }
+
+    public function ajax_revert_to_commit(): void {
+        check_ajax_referer('ai_assistant_changes', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permission denied']);
+        }
+
+        $sha = isset($_POST['sha']) ? sanitize_text_field($_POST['sha']) : '';
+
+        if (empty($sha)) {
+            wp_send_json_error(['message' => 'No commit SHA specified']);
+        }
+
+        $result = $this->git_tracker->revert_to_commit($sha);
+
+        if ($result['success']) {
+            wp_send_json_success([
+                'reverted' => $result['reverted'],
+                'message' => sprintf(__('%d file(s) reverted to commit state.', 'ai-assistant'), count($result['reverted'])),
+            ]);
+        } else {
+            wp_send_json_error([
+                'message' => implode(', ', $result['errors']),
+            ]);
         }
     }
 
