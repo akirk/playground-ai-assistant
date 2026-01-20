@@ -147,6 +147,7 @@ class ExecutorTest extends TestCase {
         $result = $this->executor->execute_tool('write_file', [
             'path' => 'plugins/test-plugin/new-file.php',
             'content' => '<?php echo "Hello";',
+            'reason' => 'Test creating new file',
         ]);
 
         $this->assertIsArray($result);
@@ -162,6 +163,7 @@ class ExecutorTest extends TestCase {
         $result = $this->executor->execute_tool('write_file', [
             'path' => 'plugins/test-plugin/test-plugin.php',
             'content' => '<?php /* Updated Plugin */',
+            'reason' => 'Test updating file',
         ]);
 
         $this->assertIsArray($result);
@@ -191,6 +193,7 @@ class ExecutorTest extends TestCase {
         $result = $this->executor->execute_tool('write_file', [
             'path' => 'plugins/test-plugin/deep/nested/dir/file.php',
             'content' => '<?php',
+            'reason' => 'Test creating nested directories',
         ]);
 
         $this->assertEquals('created', $result['action']);
@@ -201,6 +204,7 @@ class ExecutorTest extends TestCase {
         $result = $this->executor->execute_tool('write_file', [
             'path' => 'plugins/test-plugin/empty.php',
             'content' => '',
+            'reason' => 'Test empty file',
         ]);
 
         $this->assertEquals('created', $result['action']);
@@ -211,6 +215,7 @@ class ExecutorTest extends TestCase {
         $result = $this->executor->execute_tool('write_file', [
             'path' => 'plugins/test-plugin/data.json',
             'content' => ['key' => 'value', 'nested' => ['a' => 1]],
+            'reason' => 'Test JSON conversion',
         ]);
 
         $this->assertEquals('created', $result['action']);
@@ -257,6 +262,7 @@ class ExecutorTest extends TestCase {
             'edits' => [
                 ['search' => 'Test Plugin', 'replace' => 'Modified Plugin'],
             ],
+            'reason' => 'Test editing file',
         ]);
 
         $this->assertIsArray($result);
@@ -274,6 +280,7 @@ class ExecutorTest extends TestCase {
             'edits' => [
                 ['search' => 'nonexistent string', 'replace' => 'replacement'],
             ],
+            'reason' => 'Test failed edit',
         ]);
 
         $this->assertEquals(0, $result['edits_applied']);
@@ -307,6 +314,7 @@ class ExecutorTest extends TestCase {
         $this->executor->execute_tool('edit_file', [
             'path' => 'plugins/nonexistent/file.php',
             'edits' => [['search' => 'a', 'replace' => 'b']],
+            'reason' => 'Test file not found',
         ]);
     }
 
@@ -319,6 +327,7 @@ class ExecutorTest extends TestCase {
 
         $result = $this->executor->execute_tool('delete_file', [
             'path' => 'plugins/test-plugin/to-delete.php',
+            'reason' => 'Test deleting file',
         ]);
 
         $this->assertEquals('deleted', $result['action']);
@@ -331,6 +340,7 @@ class ExecutorTest extends TestCase {
 
         $this->executor->execute_tool('delete_file', [
             'path' => 'plugins/nonexistent/file.php',
+            'reason' => 'Test file not found',
         ]);
     }
 

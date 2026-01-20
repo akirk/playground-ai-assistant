@@ -15,12 +15,16 @@ if (!defined('WP_CONTENT_DIR')) {
     define('WP_CONTENT_DIR', sys_get_temp_dir() . '/wp-content-test-' . getmypid());
 }
 
+if (!defined('WP_PLUGIN_DIR')) {
+    define('WP_PLUGIN_DIR', WP_CONTENT_DIR . '/plugins');
+}
+
 // Create test directory structure
 if (!is_dir(WP_CONTENT_DIR)) {
     mkdir(WP_CONTENT_DIR, 0755, true);
 }
-if (!is_dir(WP_CONTENT_DIR . '/plugins')) {
-    mkdir(WP_CONTENT_DIR . '/plugins', 0755, true);
+if (!is_dir(WP_PLUGIN_DIR)) {
+    mkdir(WP_PLUGIN_DIR, 0755, true);
 }
 
 // WordPress function stubs for testing
@@ -54,3 +58,4 @@ if (!function_exists('trailingslashit')) {
 $plugin_dir = dirname(__DIR__);
 require_once $plugin_dir . '/includes/class-tools.php';
 require_once $plugin_dir . '/includes/class-executor.php';
+require_once $plugin_dir . '/includes/class-git-tracker.php';

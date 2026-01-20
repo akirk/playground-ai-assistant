@@ -105,6 +105,7 @@ class Plugin_Downloads {
 
         $zip_filename = $plugin_folder . '.zip';
         $temp_file = wp_tempnam($zip_filename);
+        $temp_git_dir = null;
 
         $zip = new \ZipArchive();
 
@@ -113,7 +114,21 @@ class Plugin_Downloads {
         }
 
         $this->add_directory_to_zip($zip, $plugin_path, $plugin_folder);
+
+        // Build standalone .git with original files so users can run `git diff`
+        $temp_git_dir = sys_get_temp_dir() . '/ai-git-' . uniqid();
+        mkdir($temp_git_dir, 0755, true);
+
+        if ($this->git_tracker->build_standalone_git('plugins/' . $plugin_folder, $temp_git_dir)) {
+            $this->add_directory_to_zip($zip, $temp_git_dir . '/.git', $plugin_folder . '/.git');
+        }
+
         $zip->close();
+
+        // Clean up temp .git directory
+        if ($temp_git_dir && is_dir($temp_git_dir)) {
+            $this->recursive_delete($temp_git_dir);
+        }
 
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="' . $zip_filename . '"');
@@ -124,6 +139,20 @@ class Plugin_Downloads {
         readfile($temp_file);
         unlink($temp_file);
         exit;
+    }
+
+    /**
+     * Recursively delete a directory
+     */
+    private function recursive_delete(string $dir): void {
+        if (!is_dir($dir)) {
+            return;
+        }
+        foreach (array_diff(scandir($dir), ['.', '..']) as $file) {
+            $path = $dir . '/' . $file;
+            is_dir($path) ? $this->recursive_delete($path) : unlink($path);
+        }
+        rmdir($dir);
     }
 
     /**

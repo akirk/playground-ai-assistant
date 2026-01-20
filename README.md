@@ -61,7 +61,8 @@ Enable the YOLO checkbox to skip confirmation dialogs for tool execution. Use wi
 Find this under **Tools > AI Changes**. Every file the AI creates or modifies is tracked using a git-compatible structure stored in `wp-content/.git`.
 
 - **View diffs**: Click any file to see exactly what changed
-- **Revert**: Restore any file to its original state
+- **Commit history**: Browse individual commits with expandable diffs
+- **Revert**: Restore any file to its original state, or revert to a specific commit
 - **Reapply**: Re-apply previously reverted changes
 - **Export**: Select files and download a unified `.patch` file
 - **Import**: Apply patch files to your installation
@@ -74,14 +75,15 @@ Find this under **Tools > AI Changes**. Every file the AI creates or modifies is
 When you download your Playground as a ZIP, the `wp-content` folder contains a full git repository with two branches:
 
 - **main**: The original state before AI modifications
-- **ai-changes**: All AI modifications with descriptive commit messages
+- **ai-changes**: Each AI modification as a separate commit with a descriptive message
 
-Each commit is authored by "AI Assistant" and tagged with the conversation ID. To explore:
+Each file change creates its own commit with a message describing why the change was made (e.g., "Add form validation", "Fix login redirect bug"). To explore:
 
 ```bash
 cd wp-content
-git checkout ai-changes -f
-git log
+git log --oneline ai-changes   # See all AI commits
+git diff main..ai-changes      # See all changes at once
+git show <commit-sha>          # Inspect a specific change
 ```
 
 This makes it safe to experiment—you can always undo what the AI did.
