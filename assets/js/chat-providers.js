@@ -18,7 +18,8 @@
                 this.conversationProvider = this.getProvider();
                 this.conversationModel = this.getModel();
                 this.pendingNewChat = false;
-                $('#ai-assistant-messages').removeClass('ai-pending-new-chat').empty();
+                this.pendingChatOriginalHtml = null;
+                $('#ai-assistant-messages').empty();
                 $('#ai-token-count').show();
                 $('#ai-assistant-pending-actions').empty().hide();
                 $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
@@ -40,6 +41,7 @@
         callLLM: function() {
             var provider = this.conversationProvider || this.getProvider();
 
+            this.hideToolProgress();
             this.setLoading(true);
 
             switch (provider) {
@@ -141,7 +143,8 @@
                         system: this.systemPrompt,
                         messages: this.messages,
                         tools: this.getTools()
-                    })
+                    }),
+                    signal: this.abortController ? this.abortController.signal : undefined
                 });
 
                 if (!response.ok) {
@@ -161,6 +164,7 @@
                             currentBlock = { ...event.content_block };
                             if (currentBlock.type === 'tool_use') {
                                 currentBlock.input = '';
+                                self.showToolProgress(currentBlock.name, 0);
                             } else if (currentBlock.type === 'text') {
                                 currentBlock.text = '';
                             }
@@ -176,6 +180,7 @@
                             } else if (event.delta.type === 'input_json_delta') {
                                 if (currentBlock) {
                                     currentBlock.input += event.delta.partial_json;
+                                    self.showToolProgress(currentBlock.name, currentBlock.input.length);
                                 }
                             }
                             break;
@@ -195,6 +200,8 @@
                             break;
                     }
                 }
+
+                self.hideToolProgress();
 
                 contentBlocks.forEach(function(block) {
                     if (block.type === 'tool_use') {
@@ -226,8 +233,11 @@
                 }
 
             } catch (error) {
+                this.hideToolProgress();
                 this.setLoading(false);
-                this.addMessage('error', 'Anthropic API error: ' + error.message);
+                if (error.name !== 'AbortError') {
+                    this.addMessage('error', 'Anthropic API error: ' + error.message);
+                }
             }
         },
 
@@ -254,7 +264,8 @@
                         stream: true,
                         messages: requestMessages,
                         tools: this.getToolsOpenAI()
-                    })
+                    }),
+                    signal: this.abortController ? this.abortController.signal : undefined
                 });
 
                 if (!response.ok) {
@@ -286,9 +297,15 @@
                                 if (tc.function.name) toolCallsMap[idx].function.name = tc.function.name;
                                 if (tc.function.arguments) toolCallsMap[idx].function.arguments += tc.function.arguments;
                             }
+                            var toolInfo = toolCallsMap[idx];
+                            if (toolInfo.function.name) {
+                                self.showToolProgress(toolInfo.function.name, toolInfo.function.arguments.length);
+                            }
                         });
                     }
                 }
+
+                self.hideToolProgress();
 
                 var toolCalls = [];
                 Object.keys(toolCallsMap).forEach(function(idx) {
@@ -321,8 +338,11 @@
                 }
 
             } catch (error) {
+                this.hideToolProgress();
                 this.setLoading(false);
-                this.addMessage('error', 'OpenAI API error: ' + error.message);
+                if (error.name !== 'AbortError') {
+                    this.addMessage('error', 'OpenAI API error: ' + error.message);
+                }
             }
         },
 
@@ -339,6 +359,8 @@
                 var model = this.conversationModel || this.getModel();
                 var useOllamaApi = false;
 
+                var abortSignal = this.abortController ? this.abortController.signal : undefined;
+
                 var response = await fetch(endpoint + '/v1/chat/completions', {
                     method: 'POST',
                     headers: {
@@ -349,7 +371,8 @@
                         stream: true,
                         messages: requestMessages,
                         tools: this.getToolsOpenAI()
-                    })
+                    }),
+                    signal: abortSignal
                 });
 
                 if (!response.ok) {
@@ -364,7 +387,8 @@
                             messages: requestMessages,
                             tools: this.getToolsOpenAI(),
                             stream: true
-                        })
+                        }),
+                        signal: abortSignal
                     });
                 }
 
@@ -389,9 +413,14 @@
                         if (chunk.message && chunk.message.tool_calls) {
                             chunk.message.tool_calls.forEach(function(tc, idx) {
                                 toolCallsMap[idx] = tc;
+                                if (tc.function && tc.function.name) {
+                                    var argsLength = tc.function.arguments ? JSON.stringify(tc.function.arguments).length : 0;
+                                    self.showToolProgress(tc.function.name, argsLength);
+                                }
                             });
                         }
                     }
+                    self.hideToolProgress();
                 } else {
                     for await (var chunk of this.readSSEStream(response)) {
                         // Check for error events from LM Studio/Ollama
@@ -418,9 +447,14 @@
                                     if (tc.function.name) toolCallsMap[idx].function.name = tc.function.name;
                                     if (tc.function.arguments) toolCallsMap[idx].function.arguments += tc.function.arguments;
                                 }
+                                var toolInfo = toolCallsMap[idx];
+                                if (toolInfo.function.name) {
+                                    self.showToolProgress(toolInfo.function.name, toolInfo.function.arguments.length);
+                                }
                             });
                         }
                     }
+                    self.hideToolProgress();
                 }
 
                 var toolCalls = [];
@@ -464,8 +498,11 @@
 
             } catch (error) {
                 if ($reply) $reply.remove();
+                this.hideToolProgress();
                 this.setLoading(false);
-                this.addMessage('error', 'Local LLM error: ' + error.message);
+                if (error.name !== 'AbortError') {
+                    this.addMessage('error', 'Local LLM error: ' + error.message);
+                }
             }
         },
 

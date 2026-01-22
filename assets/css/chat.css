@@ -553,6 +553,46 @@
     display: block;
 }
 
+/* Tool generation progress */
+.ai-tool-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin: 4px 0;
+    background: #f0f6fc;
+    border-left: 3px solid #2271b1;
+    border-radius: 0 4px 4px 0;
+    font-size: 12px;
+    color: #50575e;
+}
+
+.ai-tool-progress-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #c3c4c7;
+    border-top-color: #2271b1;
+    border-radius: 50%;
+    animation: ai-tool-spin 0.8s linear infinite;
+}
+
+@keyframes ai-tool-spin {
+    to { transform: rotate(360deg); }
+}
+
+.ai-tool-progress-text {
+    flex: 1;
+}
+
+.ai-tool-progress-size {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: #787c82;
+    background: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
 /* Pending actions */
 #ai-assistant-pending-actions {
     background: #fff8e5;
@@ -752,6 +792,25 @@
     border-color: #2271b1;
     box-shadow: 0 0 0 1px #2271b1;
     outline: none;
+}
+
+#ai-assistant-stop {
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #d63638;
+    border-color: #d63638;
+    color: #fff;
+}
+
+#ai-assistant-stop:hover {
+    background: #b32d2e;
+    border-color: #b32d2e;
+}
+
+#ai-assistant-stop svg {
+    display: block;
 }
 
 /* Loading indicator */

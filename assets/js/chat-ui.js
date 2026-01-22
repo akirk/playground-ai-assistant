@@ -223,30 +223,39 @@
             this.scrollToBottom();
         },
 
-        loadWelcomeMessage: function(provider, model) {
-            var config = aiAssistantConfig;
-            var useProvider = provider || config.provider;
-            var useModel = model || config.model;
-
-            if (!config.apiKey && useProvider !== 'local') {
-                this.addMessage('system', 'Welcome! Please configure your API key in [Settings](' + config.settingsUrl + ') to start chatting.', 'ai-welcome-message');
+        loadWelcomeMessage: function() {
+            if (!this.isProviderConfigured()) {
+                this.addMessage('system', 'Welcome! Please configure your API key in [Settings](' + aiAssistantConfig.settingsUrl + ') to start chatting.', 'ai-welcome-message');
             } else {
-                var providerName = useProvider === 'anthropic' ? 'Anthropic' :
-                                   useProvider === 'openai' ? 'OpenAI' :
-                                   useProvider === 'local' ? 'Local LLM' : useProvider;
-                var modelInfo = useModel ? ' (' + useModel + ')' : '';
+                var provider = this.getProvider();
+                var model = this.getModel();
+                var providerName = this.getProviderName(provider);
+                var modelInfo = model ? ' (' + model + ')' : '';
                 this.addMessage('assistant', 'Hello! I\'m your Playground AI Assistant. I can help you manage your WordPress installation - read and modify files, manage plugins, query the database, and more. What would you like to do?', 'ai-welcome-message');
                 this.addMessage('system', 'You\'re chatting with **' + providerName + '**' + modelInfo, 'ai-model-info');
             }
+        },
+
+        loadConversationWelcome: function(provider, model) {
+            this.addMessage('assistant', 'Hello! I\'m your Playground AI Assistant. I can help you manage your WordPress installation - read and modify files, manage plugins, query the database, and more. What would you like to do?', 'ai-welcome-message');
+            // Only show model info if the conversation has it saved
+            if (provider) {
+                var providerName = this.getProviderName(provider);
+                var modelInfo = model ? ' (' + model + ')' : '';
+                this.addMessage('system', 'You\'re chatting with **' + providerName + '**' + modelInfo, 'ai-model-info');
+            }
+        },
+
+        getProviderName: function(provider) {
+            return provider === 'anthropic' ? 'Anthropic' :
+                   provider === 'openai' ? 'OpenAI' :
+                   provider === 'local' ? 'Local LLM' : provider;
         },
 
         rebuildMessagesUI: function() {
             var self = this;
 
             this.messages.forEach(function(msg) {
-                if (msg._internal) {
-                    return;
-                }
                 if (msg.role === 'user') {
                     if (typeof msg.content === 'string' && msg.content.trim()) {
                         self.addMessage('user', msg.content);
@@ -330,6 +339,52 @@
             } else if (tokens > 50000) {
                 $counter.addClass('ai-tokens-warning');
             }
+        },
+
+        toolProgressState: null,
+
+        showToolProgress: function(toolName, bytesReceived) {
+            if (!this.toolProgressState) {
+                this.toolProgressState = { tools: {}, totalBytes: 0 };
+            }
+
+            // Track bytes per tool
+            var prevBytes = this.toolProgressState.tools[toolName] || 0;
+            this.toolProgressState.tools[toolName] = bytesReceived;
+            this.toolProgressState.totalBytes += (bytesReceived - prevBytes);
+
+            var toolCount = Object.keys(this.toolProgressState.tools).length;
+            var totalBytes = this.toolProgressState.totalBytes;
+
+            var sizeDisplay = totalBytes < 1024
+                ? totalBytes + ' B'
+                : (totalBytes / 1024).toFixed(1) + ' KB';
+
+            var toolText = toolCount === 1
+                ? 'Generating <strong>' + this.escapeHtml(toolName) + '</strong>...'
+                : 'Generating <strong>' + toolCount + ' tools</strong>...';
+
+            var $messages = $('#ai-assistant-messages');
+            var $progress = $messages.find('.ai-tool-progress');
+
+            if ($progress.length === 0) {
+                $progress = $('<div class="ai-tool-progress">' +
+                    '<span class="ai-tool-progress-spinner"></span>' +
+                    '<span class="ai-tool-progress-text">' + toolText + '</span>' +
+                    '<span class="ai-tool-progress-size">' + sizeDisplay + '</span>' +
+                    '</div>');
+            } else {
+                $progress.find('.ai-tool-progress-text').html(toolText);
+                $progress.find('.ai-tool-progress-size').text(sizeDisplay);
+            }
+            $messages.append($progress);
+
+            this.scrollToBottom();
+        },
+
+        hideToolProgress: function() {
+            this.toolProgressState = null;
+            $('#ai-assistant-messages .ai-tool-progress').remove();
         },
 
         deduplicateFileReads: function(newResults) {

@@ -123,32 +123,13 @@
 
             if (this.messages.length > 0 && !this.pendingNewChat) {
                 this.pendingNewChat = true;
-                $('#ai-assistant-messages').addClass('ai-pending-new-chat');
+                // Save current messages HTML for undo
+                this.pendingChatOriginalHtml = $('#ai-assistant-messages').html();
+                // Clear and show new welcome with current model
+                $('#ai-assistant-messages').empty();
+                this.loadWelcomeMessage();
                 $('#ai-token-count').hide();
                 $('#ai-assistant-new-chat').text('Undo').attr('id', 'ai-assistant-undo-new-chat');
-
-                var $modelInfo = $('.ai-model-info');
-                this.pendingChatOriginalModelInfo = $modelInfo.html();
-
-                $.ajax({
-                    url: aiAssistantConfig.ajaxUrl,
-                    type: 'POST',
-                    data: {
-                        action: 'ai_assistant_get_current_settings',
-                        _wpnonce: aiAssistantConfig.nonce
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            aiAssistantConfig.provider = response.data.provider;
-                            aiAssistantConfig.model = response.data.model;
-                            var providerName = response.data.provider === 'anthropic' ? 'Anthropic' :
-                                               response.data.provider === 'openai' ? 'OpenAI' :
-                                               response.data.provider === 'local' ? 'Local LLM' : response.data.provider;
-                            var modelInfo = response.data.model ? ' (' + response.data.model + ')' : '';
-                            $modelInfo.find('.ai-message-content').html("You're chatting with <strong>" + providerName + '</strong>' + modelInfo);
-                        }
-                    }
-                });
 
                 $('#ai-assistant-input').focus();
                 return;
@@ -162,12 +143,12 @@
             this.pendingActions = [];
             this.conversationId = 0;
             this.conversationTitle = '';
-            this.conversationProvider = aiAssistantConfig.provider;
-            this.conversationModel = aiAssistantConfig.model;
+            this.conversationProvider = this.getProvider();
+            this.conversationModel = this.getModel();
             this.pendingNewChat = false;
             this.updateSendButton();
             this.updateTokenCount();
-            $('#ai-assistant-messages').removeClass('ai-pending-new-chat').empty();
+            $('#ai-assistant-messages').empty();
             $('#ai-token-count').show();
             $('#ai-assistant-pending-actions').empty().hide();
             $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
@@ -179,14 +160,13 @@
 
         undoNewChat: function() {
             this.pendingNewChat = false;
-            $('#ai-assistant-messages').removeClass('ai-pending-new-chat');
+            // Restore original messages
+            if (this.pendingChatOriginalHtml) {
+                $('#ai-assistant-messages').html(this.pendingChatOriginalHtml);
+                this.pendingChatOriginalHtml = null;
+            }
             $('#ai-token-count').show();
             $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
-
-            if (this.pendingChatOriginalModelInfo) {
-                $('.ai-model-info').html(this.pendingChatOriginalModelInfo);
-                this.pendingChatOriginalModelInfo = null;
-            }
 
             this.scrollToBottom();
             $('#ai-assistant-input').focus();
@@ -203,8 +183,6 @@
                 return;
             }
 
-            var messagesToSave = this.messages.filter(function(m) { return !m._internal; });
-
             $.ajax({
                 url: aiAssistantConfig.ajaxUrl,
                 type: 'POST',
@@ -212,10 +190,10 @@
                     action: 'ai_assistant_save_conversation',
                     _wpnonce: aiAssistantConfig.nonce,
                     conversation_id: this.conversationId,
-                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(messagesToSave)))),
+                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(this.messages)))),
                     title: this.conversationTitle,
-                    provider: aiAssistantConfig.provider,
-                    model: aiAssistantConfig.model
+                    provider: this.conversationProvider || this.getProvider(),
+                    model: this.conversationModel || this.getModel()
                 },
                 success: function(response) {
                     if (response.success) {
@@ -266,8 +244,6 @@
                 return;
             }
 
-            var messagesToSave = this.messages.filter(function(m) { return !m._internal; });
-
             $.ajax({
                 url: aiAssistantConfig.ajaxUrl,
                 type: 'POST',
@@ -275,7 +251,7 @@
                     action: 'ai_assistant_save_conversation',
                     _wpnonce: aiAssistantConfig.nonce,
                     conversation_id: this.conversationId,
-                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(messagesToSave)))),
+                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(this.messages)))),
                     title: this.conversationTitle,
                     provider: this.conversationProvider,
                     model: this.conversationModel
@@ -320,22 +296,20 @@
 
                         $('#ai-assistant-messages').empty();
 
-                        var convProvider = response.data.provider || aiAssistantConfig.provider;
-                        var convModel = response.data.model || aiAssistantConfig.model;
-                        self.conversationProvider = convProvider;
-                        self.conversationModel = convModel;
+                        // Use saved provider/model, fall back to current only for API calls
+                        self.conversationProvider = response.data.provider || self.getProvider();
+                        self.conversationModel = response.data.model || self.getModel();
                         self.updateSendButton();
                         self.updateTokenCount();
 
-                        self.loadWelcomeMessage(convProvider, convModel);
+                        // Display only what was actually saved with the conversation
+                        self.loadConversationWelcome(response.data.provider, response.data.model);
                         if (response.data.summary) {
                             self.showConversationSummary(response.data.summary);
                         }
                         self.rebuildMessagesUI();
                         self.updateSidebarSelection();
                         $('#ai-assistant-input').focus();
-
-                        self.autoReadConversationFiles();
                         self.updateSummarizeButton();
 
                     } else {
@@ -367,84 +341,6 @@
                 }
             });
         },
-
-        autoReadConversationFiles: function() {
-            var self = this;
-            var filePaths = new Set();
-            var readFileToolIds = new Set();
-
-            this.messages.forEach(function(msg) {
-                if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-                    msg.content.forEach(function(block) {
-                        if (block.type === 'tool_use' && block.input && block.input.path) {
-                            if (block.name === 'read_file') {
-                                filePaths.add(block.input.path);
-                                readFileToolIds.add(block.id);
-                            } else if (['write_file', 'edit_file', 'append_file'].indexOf(block.name) >= 0) {
-                                filePaths.add(block.input.path);
-                            }
-                        }
-                    });
-                }
-            });
-
-            if (filePaths.size === 0) return;
-
-            if (readFileToolIds.size > 0) {
-                this.messages = this.messages.map(function(msg) {
-                    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-                        msg.content = msg.content.filter(function(block) {
-                            if (block.type === 'tool_use' && block.name === 'read_file' && readFileToolIds.has(block.id)) {
-                                return false;
-                            }
-                            return true;
-                        });
-                    }
-                    if (msg.role === 'user' && Array.isArray(msg.content)) {
-                        msg.content = msg.content.filter(function(block) {
-                            if (block.type === 'tool_result' && readFileToolIds.has(block.tool_use_id)) {
-                                return false;
-                            }
-                            return true;
-                        });
-                    }
-                    return msg;
-                }).filter(function(msg) {
-                    if (Array.isArray(msg.content) && msg.content.length === 0) {
-                        return false;
-                    }
-                    return true;
-                });
-            }
-
-            var fileContents = [];
-            var promises = Array.from(filePaths).map(function(path) {
-                return self.executeSingleTool({ name: 'read_file', arguments: { path: path } })
-                    .then(function(result) {
-                        if (result.success) {
-                            fileContents.push({ path: path, content: result.result });
-                        }
-                        return result;
-                    });
-            });
-
-            Promise.all(promises).then(function() {
-                if (fileContents.length > 0) {
-                    var contextMsg = 'Resuming conversation. Current state of previously accessed files:\n\n';
-                    fileContents.forEach(function(file) {
-                        var content = file.content.content || '';
-                        if (content.length > 5000) {
-                            content = content.substring(0, 5000) + '\n... (truncated, ' + (file.content.size - 5000) + ' more bytes)';
-                        }
-                        contextMsg += '=== ' + file.path + ' ===\n' + content + '\n\n';
-                    });
-
-                    self.messages.push({ role: 'user', content: contextMsg, _internal: true });
-                    self.addMessage('system', 'Loaded ' + fileContents.length + ' file(s) from previous session for context.');
-                }
-            });
-        },
-
         // Sidebar management
         loadSidebarConversations: function() {
             var self = this;

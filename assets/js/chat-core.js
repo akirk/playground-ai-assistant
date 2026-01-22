@@ -23,10 +23,11 @@
         draftHistoryIndex: -1,
         draftHistoryMax: 50,
         pendingNewChat: false,
-        pendingChatOriginalModelInfo: null,
+        pendingChatOriginalHtml: null,
         consecutiveAjaxErrors: 0,
         ajaxErrorThreshold: 2,
         recoveryMessageShown: false,
+        abortController: null,
 
         init: function() {
             this.setupAjaxErrorTracking();
@@ -73,6 +74,11 @@
             $(document).on('click', '#ai-assistant-send', function(e) {
                 e.preventDefault();
                 self.sendMessage();
+            });
+
+            $(document).on('click', '#ai-assistant-stop', function(e) {
+                e.preventDefault();
+                self.stopGeneration();
             });
 
             $(document).on('keydown', '#ai-assistant-input', function(e) {
@@ -334,18 +340,35 @@
             this.isLoading = loading;
             var $loading = $('#ai-assistant-loading');
             var $send = $('#ai-assistant-send');
+            var $stop = $('#ai-assistant-stop');
             var $input = $('#ai-assistant-input');
 
             if (loading) {
+                this.abortController = new AbortController();
                 $loading.show();
-                $send.prop('disabled', true);
-                $input.prop('disabled', true);
+                $send.hide();
+                $stop.show();
                 $(window).on('beforeunload.aiAssistant', this.beforeUnloadHandler);
             } else {
+                this.abortController = null;
                 $loading.hide();
-                $send.prop('disabled', false);
-                $input.prop('disabled', false).focus();
+                $stop.hide();
+                $send.show().prop('disabled', false);
+                $input.focus();
                 $(window).off('beforeunload.aiAssistant');
+            }
+        },
+
+        stopGeneration: function() {
+            if (this.abortController) {
+                this.abortController.abort();
+            }
+            this.hideToolProgress();
+            this.setLoading(false);
+
+            var $streaming = $('#ai-assistant-messages .ai-message-streaming');
+            if ($streaming.length) {
+                this.finalizeReply($streaming);
             }
         },
 
@@ -354,14 +377,14 @@
             return e.returnValue = 'AI Assistant is still processing. Are you sure you want to leave?';
         },
 
-        isNearBottom: function() {
+        isNearBottom: function(threshold) {
             var $messages = $('#ai-assistant-messages');
             if ($messages.length === 0) return true;
 
             var scrollTop = $messages.scrollTop();
             var scrollHeight = $messages[0].scrollHeight;
             var clientHeight = $messages[0].clientHeight;
-            var threshold = 100;
+            threshold = threshold || 100;
 
             return (scrollHeight - scrollTop - clientHeight) < threshold;
         },
@@ -370,7 +393,9 @@
             var $messages = $('#ai-assistant-messages');
             if ($messages.length === 0) return;
 
-            if (force || this.isNearBottom()) {
+            // Use larger threshold during streaming so autoscroll re-engages more easily
+            var threshold = this.isLoading ? 300 : 100;
+            if (force || this.isNearBottom(threshold)) {
                 $messages.scrollTop($messages[0].scrollHeight);
             }
         },
