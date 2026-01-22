@@ -123,32 +123,13 @@
 
             if (this.messages.length > 0 && !this.pendingNewChat) {
                 this.pendingNewChat = true;
-                $('#ai-assistant-messages').addClass('ai-pending-new-chat');
+                // Save current messages HTML for undo
+                this.pendingChatOriginalHtml = $('#ai-assistant-messages').html();
+                // Clear and show new welcome with current model
+                $('#ai-assistant-messages').empty();
+                this.loadWelcomeMessage();
                 $('#ai-token-count').hide();
                 $('#ai-assistant-new-chat').text('Undo').attr('id', 'ai-assistant-undo-new-chat');
-
-                var $modelInfo = $('.ai-model-info');
-                this.pendingChatOriginalModelInfo = $modelInfo.html();
-
-                $.ajax({
-                    url: aiAssistantConfig.ajaxUrl,
-                    type: 'POST',
-                    data: {
-                        action: 'ai_assistant_get_current_settings',
-                        _wpnonce: aiAssistantConfig.nonce
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            aiAssistantConfig.provider = response.data.provider;
-                            aiAssistantConfig.model = response.data.model;
-                            var providerName = response.data.provider === 'anthropic' ? 'Anthropic' :
-                                               response.data.provider === 'openai' ? 'OpenAI' :
-                                               response.data.provider === 'local' ? 'Local LLM' : response.data.provider;
-                            var modelInfo = response.data.model ? ' (' + response.data.model + ')' : '';
-                            $modelInfo.find('.ai-message-content').html("You're chatting with <strong>" + providerName + '</strong>' + modelInfo);
-                        }
-                    }
-                });
 
                 $('#ai-assistant-input').focus();
                 return;
@@ -162,12 +143,12 @@
             this.pendingActions = [];
             this.conversationId = 0;
             this.conversationTitle = '';
-            this.conversationProvider = aiAssistantConfig.provider;
-            this.conversationModel = aiAssistantConfig.model;
+            this.conversationProvider = this.getProvider();
+            this.conversationModel = this.getModel();
             this.pendingNewChat = false;
             this.updateSendButton();
             this.updateTokenCount();
-            $('#ai-assistant-messages').removeClass('ai-pending-new-chat').empty();
+            $('#ai-assistant-messages').empty();
             $('#ai-token-count').show();
             $('#ai-assistant-pending-actions').empty().hide();
             $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
@@ -179,14 +160,13 @@
 
         undoNewChat: function() {
             this.pendingNewChat = false;
-            $('#ai-assistant-messages').removeClass('ai-pending-new-chat');
+            // Restore original messages
+            if (this.pendingChatOriginalHtml) {
+                $('#ai-assistant-messages').html(this.pendingChatOriginalHtml);
+                this.pendingChatOriginalHtml = null;
+            }
             $('#ai-token-count').show();
             $('#ai-assistant-undo-new-chat').text('New Chat').attr('id', 'ai-assistant-new-chat');
-
-            if (this.pendingChatOriginalModelInfo) {
-                $('.ai-model-info').html(this.pendingChatOriginalModelInfo);
-                this.pendingChatOriginalModelInfo = null;
-            }
 
             this.scrollToBottom();
             $('#ai-assistant-input').focus();
@@ -212,8 +192,8 @@
                     conversation_id: this.conversationId,
                     messages: btoa(unescape(encodeURIComponent(JSON.stringify(this.messages)))),
                     title: this.conversationTitle,
-                    provider: aiAssistantConfig.provider,
-                    model: aiAssistantConfig.model
+                    provider: this.conversationProvider || this.getProvider(),
+                    model: this.conversationModel || this.getModel()
                 },
                 success: function(response) {
                     if (response.success) {
@@ -316,14 +296,14 @@
 
                         $('#ai-assistant-messages').empty();
 
-                        var convProvider = response.data.provider || aiAssistantConfig.provider;
-                        var convModel = response.data.model || aiAssistantConfig.model;
-                        self.conversationProvider = convProvider;
-                        self.conversationModel = convModel;
+                        // Use saved provider/model, fall back to current only for API calls
+                        self.conversationProvider = response.data.provider || self.getProvider();
+                        self.conversationModel = response.data.model || self.getModel();
                         self.updateSendButton();
                         self.updateTokenCount();
 
-                        self.loadWelcomeMessage(convProvider, convModel);
+                        // Display only what was actually saved with the conversation
+                        self.loadConversationWelcome(response.data.provider, response.data.model);
                         if (response.data.summary) {
                             self.showConversationSummary(response.data.summary);
                         }

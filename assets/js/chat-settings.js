@@ -45,7 +45,7 @@
         },
 
         getModel: function() {
-            return this.getSetting('model') || '';
+            return this.getSetting('model') || 'claude-sonnet-4-20250514';
         },
 
         setModel: function(model) {

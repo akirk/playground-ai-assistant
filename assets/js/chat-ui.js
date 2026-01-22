@@ -223,21 +223,33 @@
             this.scrollToBottom();
         },
 
-        loadWelcomeMessage: function(provider, model) {
-            var config = aiAssistantConfig;
-            var useProvider = provider || config.provider;
-            var useModel = model || config.model;
-
-            if (!config.apiKey && useProvider !== 'local') {
-                this.addMessage('system', 'Welcome! Please configure your API key in [Settings](' + config.settingsUrl + ') to start chatting.', 'ai-welcome-message');
+        loadWelcomeMessage: function() {
+            if (!this.isProviderConfigured()) {
+                this.addMessage('system', 'Welcome! Please configure your API key in [Settings](' + aiAssistantConfig.settingsUrl + ') to start chatting.', 'ai-welcome-message');
             } else {
-                var providerName = useProvider === 'anthropic' ? 'Anthropic' :
-                                   useProvider === 'openai' ? 'OpenAI' :
-                                   useProvider === 'local' ? 'Local LLM' : useProvider;
-                var modelInfo = useModel ? ' (' + useModel + ')' : '';
+                var provider = this.getProvider();
+                var model = this.getModel();
+                var providerName = this.getProviderName(provider);
+                var modelInfo = model ? ' (' + model + ')' : '';
                 this.addMessage('assistant', 'Hello! I\'m your Playground AI Assistant. I can help you manage your WordPress installation - read and modify files, manage plugins, query the database, and more. What would you like to do?', 'ai-welcome-message');
                 this.addMessage('system', 'You\'re chatting with **' + providerName + '**' + modelInfo, 'ai-model-info');
             }
+        },
+
+        loadConversationWelcome: function(provider, model) {
+            this.addMessage('assistant', 'Hello! I\'m your Playground AI Assistant. I can help you manage your WordPress installation - read and modify files, manage plugins, query the database, and more. What would you like to do?', 'ai-welcome-message');
+            // Only show model info if the conversation has it saved
+            if (provider) {
+                var providerName = this.getProviderName(provider);
+                var modelInfo = model ? ' (' + model + ')' : '';
+                this.addMessage('system', 'You\'re chatting with **' + providerName + '**' + modelInfo, 'ai-model-info');
+            }
+        },
+
+        getProviderName: function(provider) {
+            return provider === 'anthropic' ? 'Anthropic' :
+                   provider === 'openai' ? 'OpenAI' :
+                   provider === 'local' ? 'Local LLM' : provider;
         },
 
         rebuildMessagesUI: function() {

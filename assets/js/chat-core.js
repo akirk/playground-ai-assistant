@@ -23,7 +23,7 @@
         draftHistoryIndex: -1,
         draftHistoryMax: 50,
         pendingNewChat: false,
-        pendingChatOriginalModelInfo: null,
+        pendingChatOriginalHtml: null,
         consecutiveAjaxErrors: 0,
         ajaxErrorThreshold: 2,
         recoveryMessageShown: false,
@@ -377,14 +377,14 @@
             return e.returnValue = 'AI Assistant is still processing. Are you sure you want to leave?';
         },
 
-        isNearBottom: function() {
+        isNearBottom: function(threshold) {
             var $messages = $('#ai-assistant-messages');
             if ($messages.length === 0) return true;
 
             var scrollTop = $messages.scrollTop();
             var scrollHeight = $messages[0].scrollHeight;
             var clientHeight = $messages[0].clientHeight;
-            var threshold = 100;
+            threshold = threshold || 100;
 
             return (scrollHeight - scrollTop - clientHeight) < threshold;
         },
@@ -393,7 +393,9 @@
             var $messages = $('#ai-assistant-messages');
             if ($messages.length === 0) return;
 
-            if (force || this.isNearBottom()) {
+            // Use larger threshold during streaming so autoscroll re-engages more easily
+            var threshold = this.isLoading ? 300 : 100;
+            if (force || this.isNearBottom(threshold)) {
                 $messages.scrollTop($messages[0].scrollHeight);
             }
         },

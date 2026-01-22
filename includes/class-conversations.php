@@ -215,12 +215,8 @@ class Conversations {
         }
 
         update_post_meta($post_id, '_ai_message_count', count($messages));
-        if ($provider) {
-            update_post_meta($post_id, '_ai_provider', $provider);
-        }
-        if ($model) {
-            update_post_meta($post_id, '_ai_model', $model);
-        }
+        update_post_meta($post_id, '_ai_provider', $provider);
+        update_post_meta($post_id, '_ai_model', $model);
 
         wp_send_json_success([
             'conversation_id' => $post_id,
@@ -237,7 +233,14 @@ class Conversations {
             wp_send_json_error(['message' => 'Invalid conversation ID']);
         }
 
-        $post = get_post($conversation_id);
+        // Use direct query to avoid post type checks and filters
+        global $wpdb;
+        $post = $wpdb->get_row($wpdb->prepare(
+            "SELECT ID, post_title, post_content, post_excerpt, post_author, post_type
+             FROM {$wpdb->posts} WHERE ID = %d LIMIT 1",
+            $conversation_id
+        ));
+
         if (!$post || $post->post_type !== self::POST_TYPE) {
             wp_send_json_error(['message' => 'Conversation not found']);
         }
@@ -246,14 +249,20 @@ class Conversations {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        // Send base64 directly - client will decode
+        // Get meta in single query
+        $meta = $wpdb->get_results($wpdb->prepare(
+            "SELECT meta_key, meta_value FROM {$wpdb->postmeta}
+             WHERE post_id = %d AND meta_key IN ('_ai_provider', '_ai_model')",
+            $conversation_id
+        ), OBJECT_K);
+
         wp_send_json_success([
             'conversation_id' => $conversation_id,
             'title' => $post->post_title,
             'messages_base64' => $post->post_content ?: '',
             'summary' => $post->post_excerpt ?: '',
-            'provider' => get_post_meta($conversation_id, '_ai_provider', true) ?: '',
-            'model' => get_post_meta($conversation_id, '_ai_model', true) ?: '',
+            'provider' => isset($meta['_ai_provider']) ? $meta['_ai_provider']->meta_value : '',
+            'model' => isset($meta['_ai_model']) ? $meta['_ai_model']->meta_value : '',
         ]);
     }
 

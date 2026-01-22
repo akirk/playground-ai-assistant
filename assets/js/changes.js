@@ -567,9 +567,31 @@
 
         lintAllPhpFiles: function() {
             var self = this;
+
+            if (!('IntersectionObserver' in window)) {
+                // Fallback for old browsers - lint all immediately
+                $('.ai-lint-status').each(function() {
+                    self.lintFile($(this).data('path'));
+                });
+                return;
+            }
+
+            var observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        var $status = $(entry.target);
+                        var filePath = $status.data('path');
+                        if (!$status.data('linted')) {
+                            $status.data('linted', true);
+                            self.lintFile(filePath);
+                        }
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { rootMargin: '100px' });
+
             $('.ai-lint-status').each(function() {
-                var filePath = $(this).data('path');
-                self.lintFile(filePath);
+                observer.observe(this);
             });
         },
 
@@ -577,6 +599,8 @@
             var self = this;
             var $status = $('.ai-lint-status[data-path="' + filePath + '"]');
             var $pluginCard = $status.closest('.ai-plugin-card');
+
+            $status.data('linted', true);
 
             $.post(aiChanges.ajaxUrl, {
                 action: 'ai_assistant_lint_php',
