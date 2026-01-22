@@ -794,6 +794,25 @@
     outline: none;
 }
 
+#ai-assistant-stop {
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #d63638;
+    border-color: #d63638;
+    color: #fff;
+}
+
+#ai-assistant-stop:hover {
+    background: #b32d2e;
+    border-color: #b32d2e;
+}
+
+#ai-assistant-stop svg {
+    display: block;
+}
+
 /* Loading indicator */
 #ai-assistant-loading {
     padding: 10px 14px;

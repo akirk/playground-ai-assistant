@@ -142,7 +142,8 @@
                         system: this.systemPrompt,
                         messages: this.messages,
                         tools: this.getTools()
-                    })
+                    }),
+                    signal: this.abortController ? this.abortController.signal : undefined
                 });
 
                 if (!response.ok) {
@@ -233,7 +234,9 @@
             } catch (error) {
                 this.hideToolProgress();
                 this.setLoading(false);
-                this.addMessage('error', 'Anthropic API error: ' + error.message);
+                if (error.name !== 'AbortError') {
+                    this.addMessage('error', 'Anthropic API error: ' + error.message);
+                }
             }
         },
 
@@ -260,7 +263,8 @@
                         stream: true,
                         messages: requestMessages,
                         tools: this.getToolsOpenAI()
-                    })
+                    }),
+                    signal: this.abortController ? this.abortController.signal : undefined
                 });
 
                 if (!response.ok) {
@@ -335,7 +339,9 @@
             } catch (error) {
                 this.hideToolProgress();
                 this.setLoading(false);
-                this.addMessage('error', 'OpenAI API error: ' + error.message);
+                if (error.name !== 'AbortError') {
+                    this.addMessage('error', 'OpenAI API error: ' + error.message);
+                }
             }
         },
 
@@ -352,6 +358,8 @@
                 var model = this.conversationModel || this.getModel();
                 var useOllamaApi = false;
 
+                var abortSignal = this.abortController ? this.abortController.signal : undefined;
+
                 var response = await fetch(endpoint + '/v1/chat/completions', {
                     method: 'POST',
                     headers: {
@@ -362,7 +370,8 @@
                         stream: true,
                         messages: requestMessages,
                         tools: this.getToolsOpenAI()
-                    })
+                    }),
+                    signal: abortSignal
                 });
 
                 if (!response.ok) {
@@ -377,7 +386,8 @@
                             messages: requestMessages,
                             tools: this.getToolsOpenAI(),
                             stream: true
-                        })
+                        }),
+                        signal: abortSignal
                     });
                 }
 
@@ -489,7 +499,9 @@
                 if ($reply) $reply.remove();
                 this.hideToolProgress();
                 this.setLoading(false);
-                this.addMessage('error', 'Local LLM error: ' + error.message);
+                if (error.name !== 'AbortError') {
+                    this.addMessage('error', 'Local LLM error: ' + error.message);
+                }
             }
         },
 

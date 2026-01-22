@@ -27,6 +27,7 @@
         consecutiveAjaxErrors: 0,
         ajaxErrorThreshold: 2,
         recoveryMessageShown: false,
+        abortController: null,
 
         init: function() {
             this.setupAjaxErrorTracking();
@@ -73,6 +74,11 @@
             $(document).on('click', '#ai-assistant-send', function(e) {
                 e.preventDefault();
                 self.sendMessage();
+            });
+
+            $(document).on('click', '#ai-assistant-stop', function(e) {
+                e.preventDefault();
+                self.stopGeneration();
             });
 
             $(document).on('keydown', '#ai-assistant-input', function(e) {
@@ -334,17 +340,35 @@
             this.isLoading = loading;
             var $loading = $('#ai-assistant-loading');
             var $send = $('#ai-assistant-send');
+            var $stop = $('#ai-assistant-stop');
             var $input = $('#ai-assistant-input');
 
             if (loading) {
+                this.abortController = new AbortController();
                 $loading.show();
-                $send.prop('disabled', true);
+                $send.hide();
+                $stop.show();
                 $(window).on('beforeunload.aiAssistant', this.beforeUnloadHandler);
             } else {
+                this.abortController = null;
                 $loading.hide();
-                $send.prop('disabled', false);
+                $stop.hide();
+                $send.show().prop('disabled', false);
                 $input.focus();
                 $(window).off('beforeunload.aiAssistant');
+            }
+        },
+
+        stopGeneration: function() {
+            if (this.abortController) {
+                this.abortController.abort();
+            }
+            this.hideToolProgress();
+            this.setLoading(false);
+
+            var $streaming = $('#ai-assistant-messages .ai-message-streaming');
+            if ($streaming.length) {
+                this.finalizeReply($streaming);
             }
         },
 
