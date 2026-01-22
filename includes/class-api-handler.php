@@ -38,6 +38,10 @@ class API_Handler {
         $tool_name = sanitize_text_field($_POST['tool'] ?? '');
         $arguments_json = stripslashes($_POST['arguments'] ?? '{}');
         $arguments = json_decode($arguments_json, true);
+        $conversation_id = isset($_POST['conversation_id']) ? (int) $_POST['conversation_id'] : null;
+        if ($conversation_id === 0) {
+            $conversation_id = null;
+        }
 
         if (empty($tool_name)) {
             wp_send_json_error(['message' => 'Tool name is required']);
@@ -48,7 +52,7 @@ class API_Handler {
         }
 
         try {
-            $result = $this->executor->execute_tool($tool_name, $arguments, $permission);
+            $result = $this->executor->execute_tool($tool_name, $arguments, $permission, $conversation_id);
             wp_send_json_success($result);
         } catch (\Exception $e) {
             $error_message = $e->getMessage();

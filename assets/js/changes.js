@@ -11,21 +11,43 @@
         init: function() {
             this.bindEvents();
             this.lintAllPhpFiles();
+            this.autoExpandFromUrl();
+        },
+
+        autoExpandFromUrl: function() {
+            var params = new URLSearchParams(window.location.search);
+            var pluginPath = params.get('plugin');
+
+            if (pluginPath) {
+                var $card = $('.ai-plugin-card[data-plugin="' + pluginPath + '"]');
+                if ($card.length) {
+                    var $content = $card.find('.ai-plugin-content');
+                    var $toggle = $card.find('.ai-plugin-toggle');
+
+                    $toggle.text('▼');
+                    $content.show();
+
+                    // Scroll to the card
+                    $('html, body').animate({
+                        scrollTop: $card.offset().top - 50
+                    }, 300);
+                }
+            }
         },
 
         bindEvents: function() {
             var self = this;
 
-            // Directory toggle
-            $(document).on('click', '.ai-changes-toggle, .ai-changes-dir-name', function(e) {
+            // Plugin card toggle
+            $(document).on('click', '.ai-plugin-toggle, .ai-plugin-name', function(e) {
                 e.preventDefault();
-                var $dir = $(this).closest('.ai-changes-directory');
-                var $files = $dir.find('.ai-changes-files');
-                var $toggle = $dir.find('.ai-changes-toggle');
-                var willBeVisible = !$files.is(':visible');
+                var $card = $(this).closest('.ai-plugin-card');
+                var $content = $card.find('.ai-plugin-content');
+                var $toggle = $card.find('.ai-plugin-toggle');
+                var willBeVisible = !$content.is(':visible');
 
                 $toggle.text(willBeVisible ? '▼' : '▶');
-                $files.slideToggle(200);
+                $content.slideToggle(200);
             });
 
             // Per-file preview toggle
@@ -35,38 +57,38 @@
                 self.toggleFilePreview($(this));
             });
 
-            // Directory checkbox - select/deselect all files in directory
-            $(document).on('change', '.ai-dir-checkbox', function() {
+            // Plugin checkbox - select/deselect all files in plugin
+            $(document).on('change', '.ai-plugin-checkbox', function() {
                 var checked = $(this).prop('checked');
-                var dir = $(this).data('dir');
-                $('.ai-file-checkbox[data-dir="' + dir + '"]').prop('checked', checked);
+                var plugin = $(this).data('plugin');
+                $('.ai-file-checkbox[data-plugin="' + plugin + '"]').prop('checked', checked);
                 self.scheduleAutoPreview();
             });
 
-            // File checkbox - update directory checkbox state and trigger preview
+            // File checkbox - update plugin checkbox state and trigger preview
             $(document).on('change', '.ai-file-checkbox', function() {
-                var dir = $(this).data('dir');
-                var $dirCheckbox = $('.ai-dir-checkbox[data-dir="' + dir + '"]');
-                var $fileCheckboxes = $('.ai-file-checkbox[data-dir="' + dir + '"]');
+                var plugin = $(this).data('plugin');
+                var $pluginCheckbox = $('.ai-plugin-checkbox[data-plugin="' + plugin + '"]');
+                var $fileCheckboxes = $('.ai-file-checkbox[data-plugin="' + plugin + '"]');
                 var allChecked = $fileCheckboxes.length === $fileCheckboxes.filter(':checked').length;
                 var anyChecked = $fileCheckboxes.filter(':checked').length > 0;
 
-                $dirCheckbox.prop('checked', allChecked);
-                $dirCheckbox.prop('indeterminate', !allChecked && anyChecked);
+                $pluginCheckbox.prop('checked', allChecked);
+                $pluginCheckbox.prop('indeterminate', !allChecked && anyChecked);
                 self.scheduleAutoPreview();
             });
 
             // Select all
             $('#ai-select-all').on('click', function() {
-                $('.ai-dir-checkbox, .ai-file-checkbox').prop('checked', true);
-                $('.ai-dir-checkbox').prop('indeterminate', false);
+                $('.ai-plugin-checkbox, .ai-file-checkbox').prop('checked', true);
+                $('.ai-plugin-checkbox').prop('indeterminate', false);
                 self.scheduleAutoPreview();
             });
 
             // Clear selection
             $('#ai-clear-selection').on('click', function() {
-                $('.ai-dir-checkbox, .ai-file-checkbox').prop('checked', false);
-                $('.ai-dir-checkbox').prop('indeterminate', false);
+                $('.ai-plugin-checkbox, .ai-file-checkbox').prop('checked', false);
+                $('.ai-plugin-checkbox').prop('indeterminate', false);
                 self.scheduleAutoPreview();
             });
 
@@ -114,33 +136,12 @@
                 self.reapplyFile(filePath, $(this));
             });
 
-            // Revert directory
-            $(document).on('click', '.ai-revert-dir', function(e) {
+            // Revert plugin
+            $(document).on('click', '.ai-revert-plugin', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                var dir = $(this).data('dir');
-                self.revertDirectory(dir, $(this));
-            });
-
-            // Commit log toggle
-            $(document).on('click', '.ai-commit-log-header', function(e) {
-                e.preventDefault();
-                var $list = $(this).siblings('.ai-commit-log-list');
-                var $toggle = $(this).find('.ai-commit-log-toggle');
-                var willBeVisible = !$list.is(':visible');
-
-                $toggle.text(willBeVisible ? '▼' : '▶');
-                $list.slideToggle(200);
-
-                if (willBeVisible && !self.commitsLoaded) {
-                    self.loadCommits(false);
-                }
-            });
-
-            // Load more commits
-            $(document).on('click', '.ai-commit-load-more', function(e) {
-                e.preventDefault();
-                self.loadCommits(true);
+                var plugin = $(this).data('plugin');
+                self.revertPlugin(plugin, $(this));
             });
 
             // Revert to commit
@@ -190,116 +191,6 @@
                     });
                 }
             }
-        },
-
-        loadCommits: function(loadMore) {
-            var self = this;
-            var $list = $('.ai-commit-log-list');
-            var $count = $('.ai-commit-log-count');
-            var $loadMoreBtn = $list.find('.ai-commit-load-more');
-
-            if (!loadMore) {
-                $list.find('.ai-commit-log-loading').show();
-                this.commitOffset = 0;
-            } else {
-                $loadMoreBtn.prop('disabled', true).text(aiChanges.strings.loading || 'Loading...');
-            }
-
-            $.post(aiChanges.ajaxUrl, {
-                action: 'ai_assistant_get_commit_log',
-                nonce: aiChanges.nonce,
-                limit: 20,
-                offset: this.commitOffset
-            }, function(response) {
-                if (response.success) {
-                    var commits = response.data.commits;
-                    self.hasMoreCommits = response.data.has_more;
-
-                    if (!loadMore) {
-                        $list.find('.ai-commit-log-loading').hide();
-                        self.commitsLoaded = true;
-                    } else {
-                        $loadMoreBtn.remove();
-                    }
-
-                    if (commits.length === 0 && !loadMore) {
-                        $list.append('<div class="ai-commit-log-empty">' +
-                            (aiChanges.strings.noCommits || 'No commits yet') + '</div>');
-                        $count.text('(0 commits)');
-                        return;
-                    }
-
-                    commits.forEach(function(commit, index) {
-                        var isFirst = self.commitOffset === 0 && index === 0;
-                        $list.append(self.renderCommitRow(commit, isFirst));
-                    });
-
-                    self.commitOffset += commits.length;
-
-                    var totalLoaded = self.commitOffset;
-                    var countText = '(' + totalLoaded + (self.hasMoreCommits ? '+' : '') + ' ' +
-                        (totalLoaded === 1 ? 'commit' : 'commits') + ')';
-                    $count.text(countText);
-
-                    if (self.hasMoreCommits) {
-                        $list.append(
-                            '<div class="ai-commit-load-more-wrap">' +
-                            '<button type="button" class="button ai-commit-load-more">' +
-                            (aiChanges.strings.loadMore || 'Load more') +
-                            '</button></div>'
-                        );
-                    }
-                } else {
-                    $list.find('.ai-commit-log-loading').text('Failed to load commits');
-                }
-            }).fail(function() {
-                $list.find('.ai-commit-log-loading').text('Failed to load commits');
-            });
-        },
-
-        renderCommitRow: function(commit, isFirst) {
-            var revertButton = isFirst
-                ? '<span class="ai-commit-label">' + (aiChanges.strings.current || '(current)') + '</span>'
-                : '<button type="button" class="button button-small ai-revert-to-commit" data-sha="' + commit.sha + '" title="' + (aiChanges.strings.revertToCommitTitle || 'Revert files to this commit') + '">' +
-                  (aiChanges.strings.revertToHere || 'Revert to here') + '</button>';
-
-            return '<div class="ai-commit-entry">' +
-                '<div class="ai-commit-row' + (isFirst ? ' ai-commit-current' : '') + '" data-sha="' + commit.sha + '">' +
-                    '<div class="ai-commit-row-top">' +
-                        '<button type="button" class="ai-commit-diff-toggle" data-sha="' + commit.sha + '" title="Preview diff">▶</button>' +
-                        '<span class="ai-commit-sha">' + commit.short_sha + '</span>' +
-                        '<span class="ai-commit-message">' + this.escapeHtml(commit.message) + '</span>' +
-                    '</div>' +
-                    '<div class="ai-commit-row-bottom">' +
-                        '<span class="ai-commit-date" title="' + this.escapeHtml(commit.date) + '">' + this.formatTimeAgo(commit.timestamp) + '</span>' +
-                        revertButton +
-                    '</div>' +
-                '</div>' +
-                '<div class="ai-commit-diff-preview" data-sha="' + commit.sha + '" style="display: none;">' +
-                    '<pre><code></code></pre>' +
-                '</div>' +
-            '</div>';
-        },
-
-        formatTimeAgo: function(timestamp) {
-            if (!timestamp) return '';
-            var diff = Math.floor(Date.now() / 1000) - timestamp;
-
-            if (diff < 60) return aiChanges.strings.justNow || 'just now';
-            if (diff < 3600) {
-                var mins = Math.floor(diff / 60);
-                return mins + ' min ago';
-            }
-            if (diff < 86400) {
-                var hours = Math.floor(diff / 3600);
-                return hours + ' hours ago';
-            }
-            if (diff < 604800) {
-                var days = Math.floor(diff / 86400);
-                return days + ' days ago';
-            }
-            var date = new Date(timestamp * 1000);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         },
 
         revertToCommit: function(sha, $button) {
@@ -622,17 +513,17 @@
             this.lintFile(filePath);
         },
 
-        revertDirectory: function(dir, $button) {
-            var $directory = $('.ai-changes-directory[data-dir="' + dir + '"]');
-            var $revertButtons = $directory.find('.ai-revert-file');
+        revertPlugin: function(plugin, $button) {
+            var $pluginCard = $('.ai-plugin-card[data-plugin="' + plugin + '"]');
+            var $revertButtons = $pluginCard.find('.ai-revert-file');
 
             if ($revertButtons.length === 0) {
-                alert(aiChanges.strings.nothingToRevert || 'No files to revert in this directory.');
+                alert(aiChanges.strings.nothingToRevert || 'No files to revert.');
                 return;
             }
 
             var fileCount = $revertButtons.length;
-            var confirmMsg = (aiChanges.strings.confirmRevertDir || 'Are you sure you want to revert %d file(s) in this directory?').replace('%d', fileCount);
+            var confirmMsg = (aiChanges.strings.confirmRevertPlugin || 'Are you sure you want to revert %d file(s) in this plugin?').replace('%d', fileCount);
 
             if (!confirm(confirmMsg)) {
                 return;
@@ -655,7 +546,7 @@
                 if (response.success) {
                     var reverted = response.data.reverted || [];
                     reverted.forEach(function(filePath) {
-                        var $fileButton = $directory.find('.ai-revert-file[data-path="' + filePath + '"]');
+                        var $fileButton = $pluginCard.find('.ai-revert-file[data-path="' + filePath + '"]');
                         if ($fileButton.length) {
                             self.updateFileState(filePath, $fileButton, true);
                         }
@@ -685,7 +576,7 @@
         lintFile: function(filePath) {
             var self = this;
             var $status = $('.ai-lint-status[data-path="' + filePath + '"]');
-            var $directory = $status.closest('.ai-changes-directory');
+            var $pluginCard = $status.closest('.ai-plugin-card');
 
             $.post(aiChanges.ajaxUrl, {
                 action: 'ai_assistant_lint_php',
@@ -713,28 +604,28 @@
                         .attr('title', errorMsg);
                 }
 
-                self.updateDirectoryLintStatus($directory);
+                self.updatePluginLintStatus($pluginCard);
             });
         },
 
-        updateDirectoryLintStatus: function($directory) {
-            var $header = $directory.find('.ai-changes-directory-header');
-            var $dirStatus = $header.find('.ai-dir-lint-status');
+        updatePluginLintStatus: function($pluginCard) {
+            var $header = $pluginCard.find('.ai-plugin-header');
+            var $pluginStatus = $header.find('.ai-plugin-lint-status');
 
-            if ($dirStatus.length === 0) {
-                $dirStatus = $('<span class="ai-dir-lint-status"></span>');
-                $header.find('.ai-changes-count').after($dirStatus);
+            if ($pluginStatus.length === 0) {
+                $pluginStatus = $('<span class="ai-plugin-lint-status"></span>');
+                $header.find('.ai-plugin-stats').after($pluginStatus);
             }
 
-            var errorCount = $directory.find('.ai-lint-error').length;
+            var errorCount = $pluginCard.find('.ai-lint-error').length;
 
             if (errorCount > 0) {
-                $dirStatus
+                $pluginStatus
                     .text(errorCount + ' syntax ' + (errorCount === 1 ? 'error' : 'errors'))
                     .addClass('ai-lint-error')
                     .show();
             } else {
-                $dirStatus.removeClass('ai-lint-error').hide();
+                $pluginStatus.removeClass('ai-lint-error').hide();
             }
         }
     };

@@ -9,6 +9,147 @@
     flex-wrap: wrap;
 }
 
+/* Plugin Cards Container */
+.ai-changes-plugins {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Plugin Card */
+.ai-plugin-card {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.ai-plugin-header {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    background: #f6f7f7;
+    border-bottom: 1px solid #e2e4e7;
+    gap: 12px;
+}
+
+.ai-plugin-header:hover {
+    background: #f0f0f1;
+}
+
+.ai-plugin-header-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    flex: 1;
+    min-width: 0;
+}
+
+.ai-plugin-toggle {
+    font-size: 10px;
+    color: #646970;
+    user-select: none;
+    width: 12px;
+    cursor: pointer;
+}
+
+.ai-plugin-name {
+    font-weight: 600;
+    color: #1d2327;
+    cursor: pointer;
+}
+
+.ai-plugin-path {
+    font-family: monospace;
+    font-size: 12px;
+    color: #646970;
+}
+
+.ai-plugin-stats {
+    font-size: 13px;
+    color: #646970;
+    white-space: nowrap;
+}
+
+.ai-plugin-lint-status {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-left: 8px;
+    display: none;
+}
+
+.ai-plugin-lint-status.ai-lint-error {
+    background: #f8d7da;
+    color: #721c24;
+    display: inline-block;
+}
+
+.ai-revert-plugin {
+    flex-shrink: 0;
+}
+
+.ai-plugin-content {
+    padding: 0;
+}
+
+.ai-plugin-section-header {
+    padding: 10px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #646970;
+    background: #f9f9f9;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+/* Plugin Commits Section */
+.ai-plugin-commits {
+    border-bottom: 1px solid #e2e4e7;
+}
+
+.ai-plugin-commits .ai-commit-entry {
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.ai-plugin-commits .ai-commit-entry:last-child {
+    border-bottom: none;
+}
+
+.ai-plugin-commits .ai-commit-row {
+    padding: 10px 16px;
+}
+
+/* Plugin Files Section */
+.ai-plugin-files .ai-changes-file {
+    border-top: 1px solid #f0f0f1;
+}
+
+.ai-plugin-files .ai-changes-file:first-child {
+    border-top: none;
+}
+
+/* Conversation Badge */
+.ai-commit-conversation {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: #e7f3ff;
+    color: #0073aa;
+    text-decoration: none;
+    white-space: nowrap;
+    margin-left: auto;
+}
+
+.ai-commit-conversation:hover {
+    background: #cce5ff;
+    color: #005a87;
+    text-decoration: none;
+}
+
+/* Legacy tree structure - kept for backwards compatibility */
 .ai-changes-tree {
     background: #fff;
     border: 1px solid #c3c4c7;

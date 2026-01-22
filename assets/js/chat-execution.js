@@ -74,7 +74,8 @@
                         action: 'ai_assistant_execute_tool',
                         _wpnonce: aiAssistantConfig.nonce,
                         tool: toolName,
-                        arguments: JSON.stringify(toolCall.arguments)
+                        arguments: JSON.stringify(toolCall.arguments),
+                        conversation_id: self.conversationId || 0
                     },
                     success: function(response) {
                         var errorMessage = '';
