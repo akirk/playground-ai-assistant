@@ -203,8 +203,6 @@
                 return;
             }
 
-            var messagesToSave = this.messages.filter(function(m) { return !m._internal; });
-
             $.ajax({
                 url: aiAssistantConfig.ajaxUrl,
                 type: 'POST',
@@ -212,7 +210,7 @@
                     action: 'ai_assistant_save_conversation',
                     _wpnonce: aiAssistantConfig.nonce,
                     conversation_id: this.conversationId,
-                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(messagesToSave)))),
+                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(this.messages)))),
                     title: this.conversationTitle,
                     provider: aiAssistantConfig.provider,
                     model: aiAssistantConfig.model
@@ -266,8 +264,6 @@
                 return;
             }
 
-            var messagesToSave = this.messages.filter(function(m) { return !m._internal; });
-
             $.ajax({
                 url: aiAssistantConfig.ajaxUrl,
                 type: 'POST',
@@ -275,7 +271,7 @@
                     action: 'ai_assistant_save_conversation',
                     _wpnonce: aiAssistantConfig.nonce,
                     conversation_id: this.conversationId,
-                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(messagesToSave)))),
+                    messages: btoa(unescape(encodeURIComponent(JSON.stringify(this.messages)))),
                     title: this.conversationTitle,
                     provider: this.conversationProvider,
                     model: this.conversationModel
@@ -334,8 +330,6 @@
                         self.rebuildMessagesUI();
                         self.updateSidebarSelection();
                         $('#ai-assistant-input').focus();
-
-                        self.autoReadConversationFiles();
                         self.updateSummarizeButton();
 
                     } else {
@@ -367,84 +361,6 @@
                 }
             });
         },
-
-        autoReadConversationFiles: function() {
-            var self = this;
-            var filePaths = new Set();
-            var readFileToolIds = new Set();
-
-            this.messages.forEach(function(msg) {
-                if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-                    msg.content.forEach(function(block) {
-                        if (block.type === 'tool_use' && block.input && block.input.path) {
-                            if (block.name === 'read_file') {
-                                filePaths.add(block.input.path);
-                                readFileToolIds.add(block.id);
-                            } else if (['write_file', 'edit_file', 'append_file'].indexOf(block.name) >= 0) {
-                                filePaths.add(block.input.path);
-                            }
-                        }
-                    });
-                }
-            });
-
-            if (filePaths.size === 0) return;
-
-            if (readFileToolIds.size > 0) {
-                this.messages = this.messages.map(function(msg) {
-                    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-                        msg.content = msg.content.filter(function(block) {
-                            if (block.type === 'tool_use' && block.name === 'read_file' && readFileToolIds.has(block.id)) {
-                                return false;
-                            }
-                            return true;
-                        });
-                    }
-                    if (msg.role === 'user' && Array.isArray(msg.content)) {
-                        msg.content = msg.content.filter(function(block) {
-                            if (block.type === 'tool_result' && readFileToolIds.has(block.tool_use_id)) {
-                                return false;
-                            }
-                            return true;
-                        });
-                    }
-                    return msg;
-                }).filter(function(msg) {
-                    if (Array.isArray(msg.content) && msg.content.length === 0) {
-                        return false;
-                    }
-                    return true;
-                });
-            }
-
-            var fileContents = [];
-            var promises = Array.from(filePaths).map(function(path) {
-                return self.executeSingleTool({ name: 'read_file', arguments: { path: path } })
-                    .then(function(result) {
-                        if (result.success) {
-                            fileContents.push({ path: path, content: result.result });
-                        }
-                        return result;
-                    });
-            });
-
-            Promise.all(promises).then(function() {
-                if (fileContents.length > 0) {
-                    var contextMsg = 'Resuming conversation. Current state of previously accessed files:\n\n';
-                    fileContents.forEach(function(file) {
-                        var content = file.content.content || '';
-                        if (content.length > 5000) {
-                            content = content.substring(0, 5000) + '\n... (truncated, ' + (file.content.size - 5000) + ' more bytes)';
-                        }
-                        contextMsg += '=== ' + file.path + ' ===\n' + content + '\n\n';
-                    });
-
-                    self.messages.push({ role: 'user', content: contextMsg, _internal: true });
-                    self.addMessage('system', 'Loaded ' + fileContents.length + ' file(s) from previous session for context.');
-                }
-            });
-        },
-
         // Sidebar management
         loadSidebarConversations: function() {
             var self = this;

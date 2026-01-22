@@ -339,12 +339,11 @@
             if (loading) {
                 $loading.show();
                 $send.prop('disabled', true);
-                $input.prop('disabled', true);
                 $(window).on('beforeunload.aiAssistant', this.beforeUnloadHandler);
             } else {
                 $loading.hide();
                 $send.prop('disabled', false);
-                $input.prop('disabled', false).focus();
+                $input.focus();
                 $(window).off('beforeunload.aiAssistant');
             }
         },
