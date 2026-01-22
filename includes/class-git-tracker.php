@@ -25,7 +25,7 @@ class Git_Tracker {
     /**
      * Track a file change by storing the original in git format.
      */
-    public function track_change(string $path, string $change_type, ?string $original_content = null, string $reason = ''): bool {
+    public function track_change(string $path, string $change_type, ?string $original_content = null, string $reason = '', ?int $conversation_id = null): bool {
         // Convert absolute path to relative
         $relative_path = $this->to_relative_path($path);
         if (!$relative_path) {
@@ -43,7 +43,7 @@ class Git_Tracker {
                 $this->add_created_file($relative_path);
             }
             // Update ai-changes branch with current file content
-            $this->update_ai_changes_branch($reason);
+            $this->update_ai_changes_branch($reason, $conversation_id);
             return true;
         }
 
@@ -58,7 +58,7 @@ class Git_Tracker {
         }
 
         // Update ai-changes branch with current file content
-        $this->update_ai_changes_branch($reason);
+        $this->update_ai_changes_branch($reason, $conversation_id);
 
         return true;
     }
@@ -118,6 +118,247 @@ class Git_Tracker {
             'is_reverted' => $this->is_reverted($path),
         ];
         $directories[$dir]['count']++;
+    }
+
+    /**
+     * Get all tracked changes grouped by plugin/theme.
+     * Returns structure suitable for plugin-first UI display.
+     */
+    public function get_changes_by_plugin(): array {
+        if (!$this->is_active()) {
+            return [];
+        }
+
+        $entries = $this->read_index();
+        $created = $this->get_created_files();
+        $plugins = [];
+
+        // Process modified/deleted files from index
+        foreach ($entries as $path => $info) {
+            $full_path = $this->work_tree . '/' . $path;
+            $exists = file_exists($full_path);
+            $change_type = $exists ? 'modified' : 'deleted';
+            $this->add_to_plugin_list($plugins, $path, $change_type, $info);
+        }
+
+        // Process created files
+        foreach ($created as $path) {
+            $this->add_to_plugin_list($plugins, $path, 'created', ['sha' => null, 'size' => 0]);
+        }
+
+        // Get commits for each plugin
+        foreach ($plugins as $plugin_path => &$plugin_data) {
+            $plugin_data['commits'] = $this->get_commits_for_plugin($plugin_path);
+            $plugin_data['commit_count'] = count($plugin_data['commits']);
+        }
+
+        return $plugins;
+    }
+
+    private function add_to_plugin_list(array &$plugins, string $path, string $change_type, array $info): void {
+        if (empty($path) || strlen($path) < 3 || strpos($path, "\0") !== false) {
+            return;
+        }
+
+        $parts = explode('/', $path);
+        $plugin_path = count($parts) >= 2 ? $parts[0] . '/' . $parts[1] : $parts[0];
+
+        // Determine plugin name from path
+        $plugin_name = $this->get_plugin_name($plugin_path);
+
+        if (!isset($plugins[$plugin_path])) {
+            $plugins[$plugin_path] = [
+                'path' => $plugin_path,
+                'name' => $plugin_name,
+                'files' => [],
+                'file_count' => 0,
+                'commits' => [],
+                'commit_count' => 0,
+            ];
+        }
+
+        $plugins[$plugin_path]['files'][] = [
+            'id' => md5($path),
+            'path' => $path,
+            'relative_path' => substr($path, strlen($plugin_path) + 1),
+            'change_type' => $change_type,
+            'sha' => $info['sha'] ?? null,
+            'is_reverted' => $this->is_reverted($path),
+        ];
+        $plugins[$plugin_path]['file_count']++;
+    }
+
+    /**
+     * Get plugin or theme name from path, reading header if available.
+     */
+    private function get_plugin_name(string $plugin_path): string {
+        $parts = explode('/', $plugin_path);
+        $fallback_name = ucwords(str_replace(['-', '_'], ' ', end($parts)));
+
+        if (count($parts) < 2) {
+            return $fallback_name;
+        }
+
+        $type = $parts[0];
+        $dir_name = $parts[1];
+
+        if ($type === 'themes') {
+            $style_file = WP_CONTENT_DIR . '/themes/' . $dir_name . '/style.css';
+            if (file_exists($style_file)) {
+                $content = file_get_contents($style_file, false, null, 0, 8192);
+                if (preg_match('/^\s*Theme Name:\s*(.+)$/mi', $content, $matches)) {
+                    return trim($matches[1]);
+                }
+            }
+            return $fallback_name;
+        }
+
+        if ($type === 'plugins') {
+            $main_file = WP_CONTENT_DIR . '/plugins/' . $dir_name . '/' . $dir_name . '.php';
+
+            if (!file_exists($main_file)) {
+                $files = glob(WP_CONTENT_DIR . '/plugins/' . $dir_name . '/*.php');
+                if (!empty($files)) {
+                    $main_file = $files[0];
+                }
+            }
+
+            if (file_exists($main_file)) {
+                $content = file_get_contents($main_file, false, null, 0, 8192);
+                if (preg_match('/^\s*\*?\s*Plugin Name:\s*(.+)$/mi', $content, $matches)) {
+                    return trim($matches[1]);
+                }
+            }
+        }
+
+        return $fallback_name;
+    }
+
+    /**
+     * Get commits from ai-changes branch that affect files in a specific plugin prefix.
+     */
+    public function get_commits_for_plugin(string $plugin_prefix, int $limit = 20, int $offset = 0): array {
+        if (!$this->is_active()) {
+            return [];
+        }
+
+        $ref_path = $this->git_dir . '/refs/heads/ai-changes';
+        if (!file_exists($ref_path)) {
+            return [];
+        }
+
+        $plugin_prefix = rtrim($plugin_prefix, '/') . '/';
+        $commits = [];
+        $sha = trim(file_get_contents($ref_path));
+        $skipped = 0;
+
+        while ($sha && count($commits) < $limit + 1) {
+            $commit_data = $this->read_object($sha);
+            if ($commit_data === null || $commit_data['type'] !== 'commit') {
+                break;
+            }
+
+            $content = $commit_data['content'];
+
+            $tree = null;
+            $parent = null;
+            $timestamp = null;
+            $message = '';
+
+            $lines = explode("\n", $content);
+            $in_message = false;
+
+            foreach ($lines as $line) {
+                if ($in_message) {
+                    $message .= ($message ? "\n" : '') . $line;
+                } elseif ($line === '') {
+                    $in_message = true;
+                } elseif (strpos($line, 'tree ') === 0) {
+                    $tree = substr($line, 5);
+                } elseif (strpos($line, 'parent ') === 0) {
+                    $parent = substr($line, 7);
+                } elseif (strpos($line, 'author ') === 0) {
+                    if (preg_match('/(\d+)\s+[+-]\d{4}$/', $line, $m)) {
+                        $timestamp = (int) $m[1];
+                    }
+                }
+            }
+
+            // Check if this commit affects files in the plugin prefix
+            $affected_files = $this->get_commit_affected_files($sha, $parent);
+            $plugin_files = array_filter($affected_files, function($file) use ($plugin_prefix) {
+                return strpos($file, $plugin_prefix) === 0;
+            });
+
+            if (!empty($plugin_files)) {
+                if ($skipped < $offset) {
+                    $skipped++;
+                    $sha = $parent;
+                    continue;
+                }
+
+                $metadata = $this->parse_commit_metadata(trim($message));
+                $commits[] = [
+                    'sha' => $sha,
+                    'short_sha' => substr($sha, 0, 7),
+                    'tree' => $tree,
+                    'parent' => $parent,
+                    'message' => $metadata['reason'],
+                    'conversation_id' => $metadata['conversation_id'],
+                    'timestamp' => $timestamp,
+                    'date' => $timestamp ? date('Y-m-d H:i:s', $timestamp) : null,
+                    'files_affected' => count($plugin_files),
+                ];
+            }
+
+            $sha = $parent;
+        }
+
+        $has_more = count($commits) > $limit;
+        if ($has_more) {
+            array_pop($commits);
+        }
+
+        return $commits;
+    }
+
+    /**
+     * Get list of files affected by a commit (compared to its parent).
+     */
+    private function get_commit_affected_files(string $sha, ?string $parent_sha): array {
+        $commit_data = $this->read_object($sha);
+        if ($commit_data === null || !preg_match('/^tree ([a-f0-9]{40})/m', $commit_data['content'], $m)) {
+            return [];
+        }
+        $tree_sha = $m[1];
+
+        $current_files = array_keys($this->get_tree_files($tree_sha, ''));
+
+        if (!$parent_sha) {
+            return $current_files;
+        }
+
+        $parent_data = $this->read_object($parent_sha);
+        if ($parent_data === null || !preg_match('/^tree ([a-f0-9]{40})/m', $parent_data['content'], $m)) {
+            return $current_files;
+        }
+
+        $parent_files = $this->get_tree_files($m[1], '');
+        $current_files_map = $this->get_tree_files($tree_sha, '');
+
+        $affected = [];
+        foreach ($current_files_map as $path => $blob_sha) {
+            if (!isset($parent_files[$path]) || $parent_files[$path] !== $blob_sha) {
+                $affected[] = $path;
+            }
+        }
+        foreach ($parent_files as $path => $blob_sha) {
+            if (!isset($current_files_map[$path])) {
+                $affected[] = $path;
+            }
+        }
+
+        return array_unique($affected);
     }
 
     /**
@@ -628,6 +869,24 @@ class Git_Tracker {
     }
 
     /**
+     * Parse commit message to extract metadata.
+     * Returns ['reason' => 'message text', 'conversation_id' => int|null]
+     */
+    private function parse_commit_metadata(string $message): array {
+        $result = [
+            'reason' => $message,
+            'conversation_id' => null,
+        ];
+
+        if (preg_match('/^(.+?)\n\nConversation:\s*(\d+)\s*$/s', $message, $matches)) {
+            $result['reason'] = trim($matches[1]);
+            $result['conversation_id'] = (int) $matches[2];
+        }
+
+        return $result;
+    }
+
+    /**
      * Get paginated commit log from ai-changes branch.
      */
     public function get_commit_log(int $limit = 20, int $offset = 0): array {
@@ -682,12 +941,14 @@ class Git_Tracker {
                 continue;
             }
 
+            $metadata = $this->parse_commit_metadata(trim($message));
             $commits[] = [
                 'sha' => $sha,
                 'short_sha' => substr($sha, 0, 7),
                 'tree' => $tree,
                 'parent' => $parent,
-                'message' => trim($message),
+                'message' => $metadata['reason'],
+                'conversation_id' => $metadata['conversation_id'],
                 'timestamp' => $timestamp,
                 'date' => $timestamp ? date('Y-m-d H:i:s', $timestamp) : null,
             ];
@@ -1096,7 +1357,7 @@ class Git_Tracker {
     /**
      * Update the ai-changes branch with current working directory state of tracked files.
      */
-    private function update_ai_changes_branch(string $reason = ''): void {
+    private function update_ai_changes_branch(string $reason = '', ?int $conversation_id = null): void {
         $entries = $this->read_index();
         $created = $this->get_created_files();
 
@@ -1140,6 +1401,9 @@ class Git_Tracker {
         }
 
         $message = $reason ?: 'AI modification';
+        if ($conversation_id) {
+            $message .= "\n\nConversation: " . $conversation_id;
+        }
         $commit_sha = $this->write_commit($tree_sha, $parent, $message);
 
         // Update ref and HEAD

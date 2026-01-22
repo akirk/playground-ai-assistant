@@ -26,9 +26,10 @@ class Executor {
      * @param string $tool_name Tool name
      * @param array $arguments Tool arguments
      * @param string $permission User permission level
+     * @param int|null $conversation_id Optional conversation ID for tracking
      * @return mixed Tool result
      */
-    public function execute_tool(string $tool_name, array $arguments, string $permission = 'full') {
+    public function execute_tool(string $tool_name, array $arguments, string $permission = 'full', ?int $conversation_id = null) {
         // Validate permission
         $read_only_tools = ['read_file', 'list_directory', 'search_files', 'search_content', 'db_query', 'get_plugins', 'get_themes', 'list_abilities', 'get_ability', 'list_skills', 'get_skill'];
 
@@ -49,16 +50,16 @@ class Executor {
                 $path = $this->get_string_arg($arguments, 'path', $tool_name);
                 $content = $this->get_content_arg($arguments, 'content', $tool_name);
                 $reason = $this->get_string_arg($arguments, 'reason', $tool_name);
-                return $this->write_file($path, $content, $reason);
+                return $this->write_file($path, $content, $reason, $conversation_id);
             case 'edit_file':
                 $path = $this->get_string_arg($arguments, 'path', $tool_name);
                 $edits = $this->get_array_arg($arguments, 'edits', $tool_name);
                 $reason = $this->get_string_arg($arguments, 'reason', $tool_name);
-                return $this->edit_file($path, $edits, $reason);
+                return $this->edit_file($path, $edits, $reason, $conversation_id);
             case 'delete_file':
                 $path = $this->get_string_arg($arguments, 'path', $tool_name);
                 $reason = $this->get_string_arg($arguments, 'reason', $tool_name);
-                return $this->delete_file($path, $reason);
+                return $this->delete_file($path, $reason, $conversation_id);
             case 'list_directory':
                 return $this->list_directory($this->get_string_arg($arguments, 'path', $tool_name));
             case 'search_files':
@@ -214,7 +215,7 @@ class Executor {
         ];
     }
 
-    private function write_file(string $path, string $content, string $reason): array {
+    private function write_file(string $path, string $content, string $reason, ?int $conversation_id = null): array {
         $full_path = $this->resolve_path($path);
 
         // Create directory if needed
@@ -234,7 +235,7 @@ class Executor {
 
         // Track change in git (after file is written so ai-changes branch captures new content)
         if ($this->git_tracker) {
-            $this->git_tracker->track_change($path, $existed ? 'modified' : 'created', $old_content, $reason);
+            $this->git_tracker->track_change($path, $existed ? 'modified' : 'created', $old_content, $reason, $conversation_id);
         }
 
         return [
@@ -245,7 +246,7 @@ class Executor {
         ];
     }
 
-    private function edit_file(string $path, array $edits, string $reason): array {
+    private function edit_file(string $path, array $edits, string $reason, ?int $conversation_id = null): array {
         $full_path = $this->resolve_path($path);
 
         if (!file_exists($full_path)) {
@@ -297,7 +298,7 @@ class Executor {
 
             // Track change in git (after file is written so ai-changes branch captures new content)
             if ($this->git_tracker) {
-                $this->git_tracker->track_change($path, 'modified', $original_content, $reason);
+                $this->git_tracker->track_change($path, 'modified', $original_content, $reason, $conversation_id);
             }
         }
 
@@ -312,7 +313,7 @@ class Executor {
         ];
     }
 
-    private function delete_file(string $path, string $reason): array {
+    private function delete_file(string $path, string $reason, ?int $conversation_id = null): array {
         $full_path = $this->resolve_path($path);
 
         if (!file_exists($full_path)) {
@@ -336,7 +337,7 @@ class Executor {
 
         // Track change in git (after file is deleted so ai-changes branch reflects deletion)
         if ($this->git_tracker && $original_content !== null) {
-            $this->git_tracker->track_change($path, 'deleted', $original_content !== false ? $original_content : null, $reason);
+            $this->git_tracker->track_change($path, 'deleted', $original_content !== false ? $original_content : null, $reason, $conversation_id);
         }
 
         return [

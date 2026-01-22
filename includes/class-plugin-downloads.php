@@ -33,7 +33,7 @@ class Plugin_Downloads {
     }
 
     /**
-     * Add download link to plugin action links
+     * Add download and AI Changes links to plugin action links
      */
     public function add_download_link(array $actions, string $plugin_file, array $plugin_data, string $context): array {
         $plugin_folder = dirname($plugin_file);
@@ -46,6 +46,15 @@ class Plugin_Downloads {
             return $actions;
         }
 
+        $changes_url = admin_url('tools.php?page=ai-changes&plugin=' . urlencode('plugins/' . $plugin_folder));
+
+        $actions['ai-changes'] = sprintf(
+            '<a href="%s" title="%s">%s</a>',
+            esc_url($changes_url),
+            esc_attr__('View AI changes for this plugin', 'ai-assistant'),
+            esc_html__('AI Changes', 'ai-assistant')
+        );
+
         $download_url = wp_nonce_url(
             admin_url('admin.php?action=ai_assistant_download_plugin&plugin=' . urlencode($plugin_folder)),
             'ai_assistant_download_' . $plugin_folder
@@ -54,7 +63,7 @@ class Plugin_Downloads {
         $actions['ai-download'] = sprintf(
             '<a href="%s" title="%s">%s</a>',
             esc_url($download_url),
-            esc_attr__('Download this plugin as a ZIP file', 'ai-assistant'),
+            esc_attr__('Download this plugin as a ZIP file with git history', 'ai-assistant'),
             esc_html__('Download ZIP', 'ai-assistant')
         );
 
@@ -62,48 +71,72 @@ class Plugin_Downloads {
     }
 
     /**
-     * Handle the plugin download request
+     * Handle the plugin/theme download request
      */
     public function handle_download(): void {
         if (!current_user_can('manage_options')) {
             wp_die(__('You do not have permission to download plugins.', 'ai-assistant'));
         }
 
+        // Support both old 'plugin' param and new 'path' param (e.g., 'plugins/my-plugin' or 'themes/my-theme')
+        $path = isset($_GET['path']) ? sanitize_text_field($_GET['path']) : '';
         $plugin_folder = isset($_GET['plugin']) ? sanitize_file_name($_GET['plugin']) : '';
 
-        if (empty($plugin_folder)) {
-            wp_die(__('No plugin specified.', 'ai-assistant'));
+        if (!empty($path)) {
+            // New format: path includes type prefix (plugins/foo or themes/bar)
+            $nonce_key = $path;
+            $parts = explode('/', $path);
+            if (count($parts) < 2) {
+                wp_die(__('Invalid path format.', 'ai-assistant'));
+            }
+            $type = $parts[0];
+            $folder = $parts[1];
+        } elseif (!empty($plugin_folder)) {
+            // Legacy format: just the plugin folder name
+            $nonce_key = $plugin_folder;
+            $type = 'plugins';
+            $folder = $plugin_folder;
+            $path = 'plugins/' . $plugin_folder;
+        } else {
+            wp_die(__('No plugin or theme specified.', 'ai-assistant'));
         }
 
-        if (!wp_verify_nonce($_GET['_wpnonce'] ?? '', 'ai_assistant_download_' . $plugin_folder)) {
+        if (!wp_verify_nonce($_GET['_wpnonce'] ?? '', 'ai_assistant_download_' . $nonce_key)) {
             wp_die(__('Security check failed.', 'ai-assistant'));
         }
 
-        $plugin_path = WP_PLUGIN_DIR . '/' . $plugin_folder;
-
-        if (!is_dir($plugin_path)) {
-            wp_die(__('Plugin not found.', 'ai-assistant'));
+        if ($type === 'plugins') {
+            $full_path = WP_PLUGIN_DIR . '/' . $folder;
+            $allowed_dir = realpath(WP_PLUGIN_DIR);
+        } elseif ($type === 'themes') {
+            $full_path = get_theme_root() . '/' . $folder;
+            $allowed_dir = realpath(get_theme_root());
+        } else {
+            wp_die(__('Invalid type. Must be plugins or themes.', 'ai-assistant'));
         }
 
-        $real_plugin_path = realpath($plugin_path);
-        $real_plugins_dir = realpath(WP_PLUGIN_DIR);
-
-        if ($real_plugin_path === false || strpos($real_plugin_path, $real_plugins_dir) !== 0) {
-            wp_die(__('Invalid plugin path.', 'ai-assistant'));
+        if (!is_dir($full_path)) {
+            wp_die(__('Directory not found.', 'ai-assistant'));
         }
 
-        $this->send_zip($plugin_folder, $plugin_path);
+        $real_path = realpath($full_path);
+
+        if ($real_path === false || strpos($real_path, $allowed_dir) !== 0) {
+            wp_die(__('Invalid path.', 'ai-assistant'));
+        }
+
+        $this->send_zip($folder, $full_path, $path);
     }
 
     /**
      * Create and send ZIP file
      */
-    private function send_zip(string $plugin_folder, string $plugin_path): void {
+    private function send_zip(string $folder_name, string $full_path, string $git_path = ''): void {
         if (!class_exists('ZipArchive')) {
             wp_die(__('ZipArchive is not available on this server.', 'ai-assistant'));
         }
 
-        $zip_filename = $plugin_folder . '.zip';
+        $zip_filename = $folder_name . '.zip';
         $temp_file = wp_tempnam($zip_filename);
         $temp_git_dir = null;
 
@@ -113,14 +146,15 @@ class Plugin_Downloads {
             wp_die(__('Failed to create ZIP file.', 'ai-assistant'));
         }
 
-        $this->add_directory_to_zip($zip, $plugin_path, $plugin_folder);
+        $this->add_directory_to_zip($zip, $full_path, $folder_name);
 
         // Build standalone .git with original files so users can run `git diff`
         $temp_git_dir = sys_get_temp_dir() . '/ai-git-' . uniqid();
         mkdir($temp_git_dir, 0755, true);
 
-        if ($this->git_tracker->build_standalone_git('plugins/' . $plugin_folder, $temp_git_dir)) {
-            $this->add_directory_to_zip($zip, $temp_git_dir . '/.git', $plugin_folder . '/.git');
+        $tracker_path = $git_path ?: 'plugins/' . $folder_name;
+        if ($this->git_tracker->build_standalone_git($tracker_path, $temp_git_dir)) {
+            $this->add_directory_to_zip($zip, $temp_git_dir . '/.git', $folder_name . '/.git');
         }
 
         $zip->close();
