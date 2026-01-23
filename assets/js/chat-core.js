@@ -121,6 +121,18 @@
                 self.confirmAllActions(false);
             });
 
+            $(document).on('click', '.ai-tool-approve', function(e) {
+                e.preventDefault();
+                var toolId = $(this).data('tool-id');
+                self.confirmAction(toolId, true);
+            });
+
+            $(document).on('click', '.ai-tool-skip', function(e) {
+                e.preventDefault();
+                var toolId = $(this).data('tool-id');
+                self.confirmAction(toolId, false);
+            });
+
             $(document).on('keydown', function(e) {
                 if (e.which === 27 && self.isOpen) {
                     self.close();
@@ -144,10 +156,6 @@
                 self.addMessage('system', self.yoloMode
                     ? 'YOLO Mode enabled - destructive actions will execute without confirmation.'
                     : 'YOLO Mode disabled - destructive actions will require confirmation.');
-            });
-
-            $(document).on('click', '.ai-tool-header', function() {
-                $(this).closest('.ai-tool-result').toggleClass('expanded');
             });
 
             $(document).on('click', '#ai-assistant-expand', function() {

@@ -2,7 +2,7 @@
     'use strict';
 
     $.extend(window.aiAssistant, {
-        processToolCalls: function(toolCalls, provider) {
+        processToolCalls: function(toolCalls, provider, stopReason) {
             var self = this;
             var destructiveTools = ['write_file', 'edit_file', 'delete_file', 'run_php', 'install_plugin'];
             var alwaysConfirmTools = ['navigate'];
@@ -10,7 +10,37 @@
             var needsConfirmation = [];
             var executeImmediately = [];
 
+            // Build set of valid tool IDs from this batch
+            var validToolIds = {};
             toolCalls.forEach(function(tc) {
+                validToolIds[tc.id] = true;
+            });
+
+            // Mark any stale "generating" cards as truncated/interrupted
+            // (they were incomplete when the stream ended)
+            if (this.toolCardsState) {
+                Object.keys(this.toolCardsState).forEach(function(toolId) {
+                    if (!validToolIds[toolId] && self.toolCardsState[toolId].state === 'generating') {
+                        var message = 'Interrupted';
+                        if (stopReason === 'max_tokens') {
+                            message = 'Truncated (max tokens)';
+                        } else if (stopReason === 'end_turn') {
+                            message = 'Incomplete';
+                        }
+                        console.warn('[AI Assistant] Tool marked as ' + message + ':', {
+                            toolId: toolId,
+                            toolState: self.toolCardsState[toolId],
+                            stopReason: stopReason
+                        });
+                        self.setToolCardState(toolId, 'error', { message: message });
+                    }
+                });
+            }
+
+            toolCalls.forEach(function(tc) {
+                // Ensure card exists with proper description
+                self.updateToolCardDescription(tc.id, tc.name, tc.arguments);
+
                 if (alwaysConfirmTools.indexOf(tc.name) >= 0) {
                     needsConfirmation.push(tc);
                 } else if (self.yoloMode || destructiveTools.indexOf(tc.name) < 0) {
@@ -18,6 +48,15 @@
                 } else {
                     needsConfirmation.push(tc);
                 }
+            });
+
+            // Update card states based on execution path
+            executeImmediately.forEach(function(tc) {
+                self.setToolCardState(tc.id, 'executing');
+            });
+
+            needsConfirmation.forEach(function(tc) {
+                self.setToolCardState(tc.id, 'pending');
             });
 
             if (executeImmediately.length > 0) {
@@ -34,7 +73,14 @@
                         provider: provider
                     };
                 });
-                this.showPendingActions(this.pendingActions);
+                // Show bulk approve/deny header if multiple pending
+                if (needsConfirmation.length > 1) {
+                    this.showPendingActionsHeader();
+                }
+                // If no tools are executing immediately, stop loading indicator
+                if (executeImmediately.length === 0) {
+                    this.setLoading(false);
+                }
             } else if (executeImmediately.length === 0) {
                 this.setLoading(false);
             }
@@ -43,10 +89,19 @@
         executeTools: function(toolCalls, provider) {
             var self = this;
             var promises = toolCalls.map(function(tc) {
+                self.setToolCardState(tc.id, 'executing');
                 return self.executeSingleTool(tc);
             });
 
             Promise.all(promises).then(function(results) {
+                results.forEach(function(result) {
+                    if (result.success) {
+                        self.setToolCardState(result.id, 'completed');
+                    } else {
+                        var errorMsg = result.result?.error || 'Failed';
+                        self.setToolCardState(result.id, 'error', { message: errorMsg });
+                    }
+                });
                 self.handleToolResults(results, provider);
             }).catch(function(error) {
                 self.setLoading(false);
@@ -347,18 +402,105 @@
             });
         },
 
+        // Accumulate tool results until all tools are resolved
+        pendingToolResults: [],
+        currentProvider: null,
+        streamComplete: false,
+        executingToolCount: 0,
+        processedToolIds: {},
+
+        // Process a single tool immediately when it finishes streaming
+        processToolCallImmediate: function(toolId, toolName, toolArgs, provider) {
+            var self = this;
+            var destructiveTools = ['write_file', 'edit_file', 'delete_file', 'run_php', 'install_plugin'];
+            var alwaysConfirmTools = ['navigate'];
+
+            this.currentProvider = provider;
+            this.processedToolIds[toolId] = true;
+
+            // Update card description
+            this.updateToolCardDescription(toolId, toolName, toolArgs);
+
+            // Determine if needs confirmation
+            var needsConfirm = alwaysConfirmTools.indexOf(toolName) >= 0 ||
+                (!this.yoloMode && destructiveTools.indexOf(toolName) >= 0);
+
+            if (needsConfirm) {
+                this.setToolCardState(toolId, 'pending');
+                this.pendingActions.push({
+                    id: toolId,
+                    tool: toolName,
+                    arguments: toolArgs,
+                    description: this.getActionDescription(toolName, toolArgs),
+                    provider: provider
+                });
+                if (this.pendingActions.length > 1) {
+                    this.showPendingActionsHeader();
+                }
+                this.setLoading(false);
+            } else {
+                this.setToolCardState(toolId, 'executing');
+                this.executingToolCount++;
+                this.executeSingleTool({ id: toolId, name: toolName, arguments: toolArgs }).then(function(result) {
+                    self.executingToolCount--;
+                    if (result.success) {
+                        self.setToolCardState(result.id, 'completed');
+                    } else {
+                        self.setToolCardState(result.id, 'error', { message: result.result?.error || 'Failed' });
+                    }
+                    self.pendingToolResults.push(result);
+                    self.checkAllToolsResolved();
+                });
+            }
+        },
+
+        checkAllToolsResolved: function() {
+            if (!this.streamComplete) return;
+            if (this.executingToolCount > 0) return;
+            if (this.pendingActions.length > 0) return;
+
+            // All tools resolved, send results to LLM
+            this.handleToolResults([], this.currentProvider);
+        },
+
         handleToolResults: function(results, provider) {
             var self = this;
 
-            var navigateResult = results.find(function(r) {
+            // Store provider for when we finally call the LLM
+            this.currentProvider = provider;
+
+            // Accumulate results
+            this.pendingToolResults = this.pendingToolResults.concat(results);
+
+            this.deduplicateFileReads(results);
+
+            // Wait for stream to complete (assistant message must be in history first)
+            if (!this.streamComplete) {
+                this.setLoading(false);
+                return;
+            }
+
+            // Wait for all tools to finish executing
+            if (this.executingToolCount > 0) {
+                return;
+            }
+
+            // Wait for user to approve/deny pending actions
+            if (this.pendingActions && this.pendingActions.length > 0) {
+                this.setLoading(false);
+                return;
+            }
+
+            // All tools resolved - now send all results to the LLM
+            var allResults = this.pendingToolResults;
+            this.pendingToolResults = [];
+
+            var navigateResult = allResults.find(function(r) {
                 return r.name === 'navigate' && r.success && r.result && r.result.url;
             });
 
-            this.deduplicateFileReads(results);
-            this.showToolResults(results);
-
             if (provider === 'anthropic') {
-                var toolResults = results.map(function(r) {
+                var toolResults = allResults.map(function(r) {
                     return {
                         type: 'tool_result',
                         tool_use_id: r.id,
@@ -367,7 +509,7 @@
                 });
                 this.messages.push({ role: 'user', content: toolResults });
             } else {
-                results.forEach(function(r) {
+                allResults.forEach(function(r) {
                     self.messages.push({
                         role: 'tool',
                         tool_call_id: r.id,
@@ -401,18 +543,24 @@
             this.pendingActions = this.pendingActions.filter(function(a) {
                 return a.id !== actionId;
             });
-            $('[data-action-id="' + actionId + '"]').remove();
 
             if (this.pendingActions.length === 0) {
-                $('#ai-assistant-pending-actions').hide();
+                $('#ai-assistant-pending-actions-header').remove();
             }
 
             if (confirmed) {
+                this.setToolCardState(actionId, 'executing');
                 this.executeSingleTool(action).then(function(result) {
+                    if (result.success) {
+                        self.setToolCardState(result.id, 'completed');
+                    } else {
+                        var errorMsg = result.result?.error || 'Failed';
+                        self.setToolCardState(result.id, 'error', { message: errorMsg });
+                    }
                     self.handleToolResults([result], action.provider);
                 });
             } else {
-                this.addMessage('system', 'Skipped: ' + action.description);
+                this.setToolCardState(actionId, 'skipped');
                 var skippedResult = {
                     id: action.id,
                     name: action.tool,
@@ -428,19 +576,31 @@
             var self = this;
             var actions = this.pendingActions.slice();
             this.pendingActions = [];
-            $('#ai-assistant-pending-actions').hide();
+            $('#ai-assistant-pending-actions-header').remove();
 
             if (confirmed) {
+                actions.forEach(function(action) {
+                    self.setToolCardState(action.id, 'executing');
+                });
+
                 var promises = actions.map(function(action) {
                     return self.executeSingleTool(action);
                 });
 
                 Promise.all(promises).then(function(results) {
+                    results.forEach(function(result) {
+                        if (result.success) {
+                            self.setToolCardState(result.id, 'completed');
+                        } else {
+                            var errorMsg = result.result?.error || 'Failed';
+                            self.setToolCardState(result.id, 'error', { message: errorMsg });
+                        }
+                    });
                     self.handleToolResults(results, actions[0].provider);
                 });
             } else {
                 var skippedResults = actions.map(function(action) {
-                    self.addMessage('system', 'Skipped: ' + action.description);
+                    self.setToolCardState(action.id, 'skipped');
                     return {
                         id: action.id,
                         name: action.tool,
@@ -496,52 +656,44 @@
             }
         },
 
+        showPendingActionsHeader: function() {
+            var $container = this.getToolCardsContainer();
+            var $header = $('#ai-assistant-pending-actions-header');
+
+            if ($header.length === 0) {
+                $header = $('<div id="ai-assistant-pending-actions-header">' +
+                    '<span>' + (aiAssistantConfig.strings?.bulkConfirmTitle || 'Approve Actions') + '</span>' +
+                    '<div class="ai-pending-bulk-actions">' +
+                    '<button id="ai-confirm-all" class="button button-primary button-small">' +
+                    (aiAssistantConfig.strings?.approveAll || 'Approve All') + '</button>' +
+                    '<button id="ai-skip-all" class="button button-small">' +
+                    (aiAssistantConfig.strings?.skipAll || 'Skip All') + '</button>' +
+                    '</div></div>');
+                $container.prepend($header);
+            }
+            this.scrollToBottom();
+        },
+
         showPendingActions: function(actions) {
+            // Legacy function - now uses tool cards instead
             var self = this;
-            var $container = $('#ai-assistant-pending-actions');
-            $container.empty();
 
             if (actions.length === 0) {
-                $container.hide();
                 return;
             }
 
-            var html = '<div class="ai-pending-header">' +
-                '<h4>' + aiAssistantConfig.strings.confirmTitle + '</h4>' +
-                '<div class="ai-pending-bulk-actions">' +
-                '<button id="ai-confirm-all" class="button button-primary button-small">' +
-                aiAssistantConfig.strings.confirm + '</button>' +
-                '<button id="ai-skip-all" class="button button-small">' +
-                aiAssistantConfig.strings.cancel + '</button>' +
-                '</div></div><div class="ai-pending-list">';
-
+            // Ensure tool cards exist for these actions
             actions.forEach(function(action) {
-                var preview = self.getActionContentPreview(action.tool, action.arguments);
-                var previewHtml = '';
-
-                if (preview) {
-                    var previewLabel = preview.isEdit ? 'Show changes' : 'Show content';
-                    var contentStr = typeof preview.content === 'string' ? preview.content : String(preview.content || '');
-                    var lineCount = (contentStr.match(/\n/g) || []).length + 1;
-                    previewHtml = '<div class="ai-action-preview">' +
-                        '<button type="button" class="ai-action-preview-toggle">' +
-                        '<span class="dashicons dashicons-arrow-right-alt2"></span>' +
-                        previewLabel + ' (' + lineCount + ' lines)</button>' +
-                        '<div class="ai-action-preview-content"><pre>' + preview.html + '</pre></div>' +
-                        '</div>';
+                if (!self.toolCardsState || !self.toolCardsState[action.id]) {
+                    self.showToolProgress(action.tool, 0, action.id);
+                    self.updateToolCardDescription(action.id, action.tool, action.arguments);
                 }
-
-                html += '<div class="ai-pending-action" data-action-id="' + action.id + '">' +
-                    '<div class="ai-action-info">' +
-                    '<span class="ai-action-tool">' + action.tool + '</span>' +
-                    '<span class="ai-action-desc">' + self.escapeHtml(action.description) + '</span>' +
-                    previewHtml +
-                    '</div></div>';
+                self.setToolCardState(action.id, 'pending');
             });
 
-            html += '</div>';
-            $container.html(html).show();
-            this.scrollToBottom();
+            if (actions.length > 1) {
+                this.showPendingActionsHeader();
+            }
         },
 
         getActionContentPreview: function(toolName, args) {

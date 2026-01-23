@@ -120,6 +120,9 @@ class Chat_UI {
                 'confirmTitle' => __('Confirm Action', 'ai-assistant'),
                 'confirm' => __('Confirm', 'ai-assistant'),
                 'cancel' => __('Cancel', 'ai-assistant'),
+                'bulkConfirmTitle' => __('Approve Actions', 'ai-assistant'),
+                'approveAll' => __('Approve All', 'ai-assistant'),
+                'skipAll' => __('Skip All', 'ai-assistant'),
                 'newChat' => __('New Chat', 'ai-assistant'),
                 'close' => __('Close', 'ai-assistant'),
             ]

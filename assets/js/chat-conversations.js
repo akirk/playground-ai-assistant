@@ -148,6 +148,7 @@
             this.pendingNewChat = false;
             this.updateSendButton();
             this.updateTokenCount();
+            this.clearToolCards();
             $('#ai-assistant-messages').empty();
             $('#ai-token-count').show();
             $('#ai-assistant-pending-actions').empty().hide();

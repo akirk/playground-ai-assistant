@@ -86,16 +86,14 @@
 
         addToolUseMessage: function(toolName, input) {
             var $messages = $('#ai-assistant-messages');
-            var inputStr = typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input);
             var description = this.getActionDescription(toolName, input || {});
 
-            var html = '<div class="ai-tool-result ai-tool-result-success">' +
-                '<div class="ai-tool-header">' +
-                '<span class="ai-tool-toggle">&#9654;</span>' +
-                '<span class="ai-tool-icon">&#9881;</span>' +
-                '<span class="ai-tool-name">' + $('<div>').text(description).html() + '</span>' +
+            var html = '<div class="ai-tool-card ai-tool-card-completed">' +
+                '<div class="ai-tool-card-header">' +
+                '<span class="ai-tool-card-name">' + this.escapeHtml(toolName) + '</span>' +
+                '<span class="ai-tool-card-status">Completed</span>' +
                 '</div>' +
-                '<pre class="ai-tool-output">' + $('<div>').text(inputStr).html() + '</pre>' +
+                '<div class="ai-tool-card-desc">' + this.escapeHtml(description) + '</div>' +
                 '</div>';
 
             $messages.append(html);
@@ -136,91 +134,6 @@
             content = content.replace(/\n/g, '<br>');
 
             return content;
-        },
-
-        showToolResults: function(results) {
-            var self = this;
-            var $messages = $('#ai-assistant-messages');
-
-            results.forEach(function(result) {
-                var statusClass = result.success ? 'success' : 'error';
-                var statusIcon = result.success ? '&#10003;' : '&#10007;';
-                var description = self.getActionDescription(result.name, result.input || {});
-
-                var resultStr;
-                if (typeof result.result === 'object') {
-                    if (result.result.error === '' || result.result.error === undefined) {
-                        result.result.error = result.result.error === ''
-                            ? '(empty error - check browser console for details)'
-                            : undefined;
-                    }
-                    resultStr = JSON.stringify(result.result, null, 2);
-                } else {
-                    resultStr = result.result || '(no result data)';
-                }
-
-                var inputHtml = '';
-                var showInput = !result.success || result.name === 'run_php';
-                if (showInput && result.input) {
-                    var inputLabel = result.name === 'run_php' ? 'Code executed:' : 'Input parameters:';
-                    var inputDisplay;
-
-                    if (result.name === 'run_php' && result.input.code) {
-                        inputDisplay = result.input.code;
-                    } else {
-                        var truncatedInput = {};
-                        var maxValueLength = 500;
-                        for (var key in result.input) {
-                            if (result.input.hasOwnProperty(key)) {
-                                var val = result.input[key];
-                                if (typeof val === 'string' && val.length > maxValueLength) {
-                                    truncatedInput[key] = val.substring(0, maxValueLength) + '... (' + val.length + ' chars total)';
-                                } else if (Array.isArray(val)) {
-                                    truncatedInput[key] = val.map(function(item) {
-                                        if (typeof item === 'string' && item.length > maxValueLength) {
-                                            return item.substring(0, maxValueLength) + '... (' + item.length + ' chars total)';
-                                        } else if (typeof item === 'object' && item !== null) {
-                                            var truncatedItem = {};
-                                            for (var itemKey in item) {
-                                                if (item.hasOwnProperty(itemKey)) {
-                                                    var itemVal = item[itemKey];
-                                                    if (typeof itemVal === 'string' && itemVal.length > maxValueLength) {
-                                                        truncatedItem[itemKey] = itemVal.substring(0, maxValueLength) + '... (' + itemVal.length + ' chars total)';
-                                                    } else {
-                                                        truncatedItem[itemKey] = itemVal;
-                                                    }
-                                                }
-                                            }
-                                            return truncatedItem;
-                                        }
-                                        return item;
-                                    });
-                                } else {
-                                    truncatedInput[key] = val;
-                                }
-                            }
-                        }
-                        inputDisplay = JSON.stringify(truncatedInput, null, 2);
-                    }
-
-                    inputHtml = '<div class="ai-tool-input-label">' + inputLabel + '</div>' +
-                        '<pre class="ai-tool-input">' + $('<div>').text(inputDisplay).html() + '</pre>';
-                }
-
-                var content = '<div class="ai-tool-result ai-tool-result-' + statusClass + '">' +
-                    '<div class="ai-tool-header">' +
-                    '<span class="ai-tool-toggle">&#9654;</span>' +
-                    '<span class="ai-tool-icon">' + statusIcon + '</span>' +
-                    '<span class="ai-tool-name">' + self.escapeHtml(description) + '</span>' +
-                    '</div>' +
-                    inputHtml +
-                    '<pre class="ai-tool-output">' + $('<div>').text(resultStr).html() + '</pre>' +
-                    '</div>';
-
-                $messages.append(content);
-            });
-
-            this.scrollToBottom();
         },
 
         loadWelcomeMessage: function() {
@@ -341,50 +254,242 @@
             }
         },
 
-        toolProgressState: null,
+        toolCardsState: {},
 
-        showToolProgress: function(toolName, bytesReceived) {
-            if (!this.toolProgressState) {
-                this.toolProgressState = { tools: {}, totalBytes: 0 };
-            }
+        formatBytes: function(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        },
 
-            // Track bytes per tool
-            var prevBytes = this.toolProgressState.tools[toolName] || 0;
-            this.toolProgressState.tools[toolName] = bytesReceived;
-            this.toolProgressState.totalBytes += (bytesReceived - prevBytes);
-
-            var toolCount = Object.keys(this.toolProgressState.tools).length;
-            var totalBytes = this.toolProgressState.totalBytes;
-
-            var sizeDisplay = totalBytes < 1024
-                ? totalBytes + ' B'
-                : (totalBytes / 1024).toFixed(1) + ' KB';
-
-            var toolText = toolCount === 1
-                ? 'Generating <strong>' + this.escapeHtml(toolName) + '</strong>...'
-                : 'Generating <strong>' + toolCount + ' tools</strong>...';
-
-            var $messages = $('#ai-assistant-messages');
-            var $progress = $messages.find('.ai-tool-progress');
-
-            if ($progress.length === 0) {
-                $progress = $('<div class="ai-tool-progress">' +
-                    '<span class="ai-tool-progress-spinner"></span>' +
-                    '<span class="ai-tool-progress-text">' + toolText + '</span>' +
-                    '<span class="ai-tool-progress-size">' + sizeDisplay + '</span>' +
-                    '</div>');
+        getToolCardsContainer: function() {
+            var $container = $('#ai-assistant-tool-cards');
+            if ($container.length === 0) {
+                $container = $('<div id="ai-assistant-tool-cards"></div>');
+                $('#ai-assistant-messages').append($container);
             } else {
-                $progress.find('.ai-tool-progress-text').html(toolText);
-                $progress.find('.ai-tool-progress-size').text(sizeDisplay);
+                // Move container to end of messages if it already exists
+                // This handles cases where LLM responds multiple times with tool calls
+                $('#ai-assistant-messages').append($container);
             }
-            $messages.append($progress);
+            return $container;
+        },
+
+        showToolProgress: function(toolName, bytesReceived, toolId, partialInput) {
+            toolId = toolId || 'tool-' + toolName;
+
+            if (!this.toolCardsState[toolId]) {
+                this.toolCardsState[toolId] = {
+                    name: toolName,
+                    bytes: 0,
+                    state: 'generating',
+                    partialDesc: null
+                };
+                this.addToolCard(toolId, toolName);
+            }
+
+            this.toolCardsState[toolId].bytes = bytesReceived;
+            this.updateToolCardProgress(toolId, bytesReceived);
+
+            // Try to extract description from partial JSON
+            if (partialInput && !this.toolCardsState[toolId].partialDesc) {
+                var desc = this.extractPartialDescription(toolName, partialInput);
+                if (desc) {
+                    this.toolCardsState[toolId].partialDesc = desc;
+                    var $card = $('[data-tool-id="' + toolId + '"]');
+                    if ($card.length) {
+                        $card.find('.ai-tool-card-desc').text(desc);
+                    }
+                }
+            }
+        },
+
+        extractPartialDescription: function(toolName, partialJson) {
+            var pathMatch, match;
+            switch (toolName) {
+                case 'write_file':
+                case 'read_file':
+                case 'delete_file':
+                case 'edit_file':
+                    pathMatch = partialJson.match(/"path"\s*:\s*"([^"]+)"/);
+                    if (pathMatch) {
+                        var verb = toolName === 'write_file' ? 'Write' :
+                                   toolName === 'read_file' ? 'Read' :
+                                   toolName === 'delete_file' ? 'Delete' : 'Edit';
+                        return verb + ': ' + pathMatch[1];
+                    }
+                    break;
+                case 'run_php':
+                    // Can't really preview code meaningfully
+                    return null;
+                case 'search_content':
+                    match = partialJson.match(/"needle"\s*:\s*"([^"]+)"/);
+                    if (match) {
+                        var needle = match[1].substring(0, 30);
+                        return 'Search for: "' + needle + (match[1].length > 30 ? '...' : '') + '"';
+                    }
+                    break;
+                case 'db_query':
+                    match = partialJson.match(/"sql"\s*:\s*"([^"]+)"/);
+                    if (match) {
+                        var sql = match[1].substring(0, 40);
+                        return 'Query: ' + sql + (match[1].length > 40 ? '...' : '');
+                    }
+                    break;
+            }
+            return null;
+        },
+
+        addToolCard: function(toolId, toolName) {
+            var $container = this.getToolCardsContainer();
+            var description = this.getActionDescription(toolName, {});
+
+            var $card = $('<div class="ai-tool-card ai-tool-card-generating" data-tool-id="' + toolId + '">' +
+                '<div class="ai-tool-card-header">' +
+                '<span class="ai-tool-card-spinner"></span>' +
+                '<span class="ai-tool-card-name">' + this.escapeHtml(toolName) + '</span>' +
+                '<span class="ai-tool-card-status">Generating...</span>' +
+                '<span class="ai-tool-card-size">0 B</span>' +
+                '</div>' +
+                '<div class="ai-tool-card-desc">' + this.escapeHtml(description) + '</div>' +
+                '<div class="ai-tool-card-preview"></div>' +
+                '<div class="ai-tool-card-actions"></div>' +
+                '</div>');
+
+            $container.append($card);
+            this.scrollToBottom();
+        },
+
+        updateToolCardProgress: function(toolId, bytes) {
+            if (this.toolCardsState[toolId]) {
+                this.toolCardsState[toolId].bytes = bytes;
+            }
+            var $card = $('[data-tool-id="' + toolId + '"]');
+            if ($card.length) {
+                $card.find('.ai-tool-card-size').text(this.formatBytes(bytes));
+            }
+        },
+
+        updateToolCardDescription: function(toolId, toolName, args) {
+            var $card = $('[data-tool-id="' + toolId + '"]');
+
+            // Create card if it doesn't exist (for providers that report tools at completion)
+            if (!$card.length) {
+                this.showToolProgress(toolName, JSON.stringify(args || {}).length, toolId);
+                $card = $('[data-tool-id="' + toolId + '"]');
+            }
+
+            if ($card.length) {
+                var description = this.getActionDescription(toolName, args);
+                $card.find('.ai-tool-card-desc').text(description);
+
+                // Show size now that tool is fully received
+                var argsStr = JSON.stringify(args || {});
+                var bytes = argsStr.length;
+                $card.find('.ai-tool-card-size').text(this.formatBytes(bytes));
+
+                var preview = this.getActionContentPreview(toolName, args);
+                if (preview) {
+                    var previewLabel = preview.isEdit ? 'Show changes' : 'Show content';
+                    var contentStr = typeof preview.content === 'string' ? preview.content : String(preview.content || '');
+                    contentStr = contentStr.trim();
+                    var lineCount = (contentStr.match(/\n/g) || []).length + 1;
+                    var previewHtml = '<div class="ai-action-preview">' +
+                        '<button type="button" class="ai-action-preview-toggle">' +
+                        '<span class="dashicons dashicons-arrow-right-alt2"></span>' +
+                        previewLabel + ' (' + lineCount + ' lines)</button>' +
+                        '<div class="ai-action-preview-content"><pre>' + preview.html + '</pre></div>' +
+                        '</div>';
+                    $card.find('.ai-tool-card-preview').html(previewHtml);
+                }
+            }
+        },
+
+        setToolCardState: function(toolId, state, options) {
+            options = options || {};
+            var $card = $('[data-tool-id="' + toolId + '"]');
+            if (!$card.length) return;
+
+            $card.removeClass('ai-tool-card-generating ai-tool-card-ready ai-tool-card-pending ai-tool-card-executing ai-tool-card-completed ai-tool-card-error ai-tool-card-skipped');
+            $card.addClass('ai-tool-card-' + state);
+
+            var $status = $card.find('.ai-tool-card-status');
+            var $actions = $card.find('.ai-tool-card-actions');
+            var $spinner = $card.find('.ai-tool-card-spinner');
+
+            switch (state) {
+                case 'ready':
+                    $status.text('Ready');
+                    $spinner.hide();
+                    $actions.empty();
+                    break;
+                case 'pending':
+                    $status.text('Waiting for approval');
+                    $spinner.hide();
+                    $actions.html(
+                        '<button class="button button-primary button-small ai-tool-approve" data-tool-id="' + toolId + '">Approve</button>' +
+                        '<button class="button button-small ai-tool-skip" data-tool-id="' + toolId + '">Skip</button>'
+                    );
+                    break;
+                case 'executing':
+                    $status.text('Executing...');
+                    $spinner.show();
+                    $actions.empty();
+                    break;
+                case 'completed':
+                    $status.text(options.message || 'Completed');
+                    $spinner.hide();
+                    $actions.empty();
+                    $card.find('.ai-tool-card-size').hide();
+                    // Move completed card out of the tool-cards container so it persists
+                    var $container = $('#ai-assistant-tool-cards');
+                    if ($card.parent().is($container)) {
+                        $card.insertBefore($container);
+                    }
+                    break;
+                case 'error':
+                    $status.text(options.message || 'Error');
+                    $spinner.hide();
+                    $actions.empty();
+                    // Move error card out of the tool-cards container so it persists
+                    var $errorContainer = $('#ai-assistant-tool-cards');
+                    if ($card.parent().is($errorContainer)) {
+                        $card.insertBefore($errorContainer);
+                    }
+                    break;
+                case 'skipped':
+                    $status.text('Skipped');
+                    $spinner.hide();
+                    $actions.empty();
+                    // Move skipped card out of the tool-cards container so it persists
+                    var $skipContainer = $('#ai-assistant-tool-cards');
+                    if ($card.parent().is($skipContainer)) {
+                        $card.insertBefore($skipContainer);
+                    }
+                    break;
+            }
+
+            if (this.toolCardsState[toolId]) {
+                this.toolCardsState[toolId].state = state;
+            }
 
             this.scrollToBottom();
         },
 
+        clearToolCards: function() {
+            this.toolCardsState = {};
+            $('#ai-assistant-tool-cards').remove();
+        },
+
         hideToolProgress: function() {
-            this.toolProgressState = null;
-            $('#ai-assistant-messages .ai-tool-progress').remove();
+            // Legacy compatibility - now just clears incomplete cards
+            var self = this;
+            Object.keys(this.toolCardsState).forEach(function(toolId) {
+                if (self.toolCardsState[toolId].state === 'generating') {
+                    $('[data-tool-id="' + toolId + '"]').remove();
+                    delete self.toolCardsState[toolId];
+                }
+            });
         },
 
         deduplicateFileReads: function(newResults) {

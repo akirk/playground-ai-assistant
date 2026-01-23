@@ -455,142 +455,177 @@
     color: inherit;
 }
 
-/* Tool results */
-.ai-tool-result {
-    background: #f6f7f7;
-    border-left: 3px solid #2271b1;
-    padding: 8px 12px;
-    margin: 4px 0;
-    border-radius: 0 4px 4px 0;
-}
-
-.ai-tool-result-success {
-    border-left-color: #00a32a;
-}
-
-.ai-tool-result-error {
-    border-left-color: #d63638;
-}
-
-.ai-tool-header {
+/* Tool cards container */
+#ai-assistant-tool-cards {
     display: flex;
-    align-items: center;
-    cursor: pointer;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0;
 }
 
-.ai-tool-toggle {
-    margin-right: 6px;
-    font-size: 10px;
-    color: #50575e;
-    transition: transform 0.2s;
+/* Tool card base */
+.ai-tool-card {
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 12px;
 }
 
-.ai-tool-result.expanded .ai-tool-toggle {
-    transform: rotate(90deg);
-}
-
-.ai-tool-icon {
-    font-weight: bold;
-    margin-right: 6px;
-}
-
-.ai-tool-result-success .ai-tool-icon {
-    color: #00a32a;
-}
-
-.ai-tool-result-error .ai-tool-icon {
-    color: #d63638;
-}
-
-.ai-tool-name {
-    font-weight: 600;
-    color: #1d2327;
-}
-
-.ai-tool-output {
-    background: #1d2327;
-    color: #f0f0f1;
-    padding: 8px;
-    border-radius: 3px;
-    margin-top: 6px;
-    font-size: 11px;
-    max-height: 150px;
-    overflow: auto;
-    font-family: Consolas, Monaco, monospace;
-    display: none;
-}
-
-.ai-tool-result.expanded .ai-tool-output {
-    display: block;
-}
-
-.ai-tool-input-label {
-    color: #b32d2e;
-    font-size: 11px;
-    font-weight: 600;
-    margin-top: 6px;
-    display: none;
-}
-
-.ai-tool-result.expanded .ai-tool-input-label {
-    display: block;
-}
-
-.ai-tool-input {
-    background: #2c1810;
-    color: #f0f0f1;
-    padding: 8px;
-    border-radius: 3px;
-    margin-top: 4px;
-    font-size: 11px;
-    max-height: 150px;
-    overflow: auto;
-    font-family: Consolas, Monaco, monospace;
-    display: none;
-}
-
-.ai-tool-result.expanded .ai-tool-input {
-    display: block;
-}
-
-/* Tool generation progress */
-.ai-tool-progress {
+.ai-tool-card-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
-    margin: 4px 0;
-    background: #f0f6fc;
-    border-left: 3px solid #2271b1;
-    border-radius: 0 4px 4px 0;
-    font-size: 12px;
-    color: #50575e;
 }
 
-.ai-tool-progress-spinner {
+.ai-tool-card-spinner {
     width: 14px;
     height: 14px;
     border: 2px solid #c3c4c7;
     border-top-color: #2271b1;
     border-radius: 50%;
     animation: ai-tool-spin 0.8s linear infinite;
+    flex-shrink: 0;
 }
 
 @keyframes ai-tool-spin {
     to { transform: rotate(360deg); }
 }
 
-.ai-tool-progress-text {
-    flex: 1;
+.ai-tool-card-name {
+    font-weight: 600;
+    color: #1d2327;
 }
 
-.ai-tool-progress-size {
+.ai-tool-card-status {
+    color: #787c82;
+    font-size: 11px;
+}
+
+.ai-tool-card-size {
+    margin-left: auto;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     font-size: 11px;
     color: #787c82;
-    background: #fff;
+    background: #f0f0f1;
     padding: 2px 6px;
     border-radius: 3px;
+}
+
+.ai-tool-card-desc {
+    color: #50575e;
+    margin-top: 4px;
+    padding-left: 22px;
+}
+
+.ai-tool-card-preview {
+    margin-top: 6px;
+    padding-left: 22px;
+}
+
+.ai-tool-card-actions {
+    margin-top: 8px;
+    padding-left: 22px;
+    display: flex;
+    gap: 6px;
+}
+
+.ai-tool-card-actions:empty {
+    display: none;
+}
+
+/* State: Generating */
+.ai-tool-card-generating {
+    background: #f0f6fc;
+    border-color: #c5d9ed;
+}
+
+/* State: Pending approval */
+.ai-tool-card-pending {
+    background: #fff8e5;
+    border-color: #dba617;
+}
+
+.ai-tool-card-pending .ai-tool-card-spinner {
+    display: none;
+}
+
+/* State: Executing */
+.ai-tool-card-executing {
+    background: #f0f6fc;
+    border-color: #2271b1;
+}
+
+/* State: Completed */
+.ai-tool-card-completed {
+    background: #edfaef;
+    border-color: #46b450;
+}
+
+.ai-tool-card-completed .ai-tool-card-spinner {
+    display: none;
+}
+
+.ai-tool-card-completed .ai-tool-card-status {
+    color: #46b450;
+}
+
+/* State: Error */
+.ai-tool-card-error {
+    background: #fcf0f1;
+    border-color: #d63638;
+}
+
+.ai-tool-card-error .ai-tool-card-spinner {
+    display: none;
+}
+
+.ai-tool-card-error .ai-tool-card-status {
+    color: #d63638;
+}
+
+/* State: Skipped */
+.ai-tool-card-skipped {
+    background: #f0f0f1;
+    border-color: #c3c4c7;
+    opacity: 0.7;
+}
+
+.ai-tool-card-skipped .ai-tool-card-spinner {
+    display: none;
+}
+
+/* State: Ready (finished generating, waiting for full response) */
+.ai-tool-card-ready {
+    background: #fff;
+    border-color: #c3c4c7;
+}
+
+.ai-tool-card-ready .ai-tool-card-spinner {
+    display: none;
+}
+
+.ai-tool-card-ready .ai-tool-card-status {
+    color: #50575e;
+}
+
+/* Pending actions header (inside tool cards) */
+#ai-assistant-pending-actions-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #fff8e5;
+    border: 1px solid #dba617;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+#ai-assistant-pending-actions-header .ai-pending-bulk-actions {
+    display: flex;
+    gap: 6px;
 }
 
 /* Pending actions */

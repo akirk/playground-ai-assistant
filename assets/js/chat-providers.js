@@ -27,6 +27,11 @@
                 this.loadWelcomeMessage();
             }
 
+            this.clearToolCards();
+            this.pendingToolResults = [];
+            this.streamComplete = false;
+            this.executingToolCount = 0;
+            this.processedToolIds = {};
             this.addToDraftHistory(message);
             this.addMessage('user', message);
             this.messages.push({ role: 'user', content: message });
@@ -43,6 +48,9 @@
 
             this.hideToolProgress();
             this.setLoading(true);
+            this.streamComplete = false;
+            this.executingToolCount = 0;
+            this.processedToolIds = {};
 
             switch (provider) {
                 case 'anthropic':
@@ -81,6 +89,8 @@
                             if (data === '[DONE]') return;
                             try {
                                 yield JSON.parse(data);
+                                // Yield to browser between events to allow repaints
+                                await new Promise(function(r) { requestAnimationFrame(r); });
                             } catch (e) {
                                 // Skip non-JSON data lines
                             }
@@ -111,6 +121,8 @@
                         if (line) {
                             try {
                                 yield JSON.parse(line);
+                                // Yield to browser between events to allow repaints
+                                await new Promise(function(r) { requestAnimationFrame(r); });
                             } catch (e) {
                                 // Skip non-JSON lines
                             }
@@ -138,7 +150,7 @@
                     },
                     body: JSON.stringify({
                         model: model,
-                        max_tokens: 4096,
+                        max_tokens: 16384,
                         stream: true,
                         system: this.systemPrompt,
                         messages: this.messages,
@@ -157,6 +169,7 @@
                 var contentBlocks = [];
                 var currentBlock = null;
                 var toolCalls = [];
+                var stopReason = null;
 
                 for await (var event of this.readSSEStream(response)) {
                     switch (event.type) {
@@ -164,7 +177,7 @@
                             currentBlock = { ...event.content_block };
                             if (currentBlock.type === 'tool_use') {
                                 currentBlock.input = '';
-                                self.showToolProgress(currentBlock.name, 0);
+                                self.showToolProgress(currentBlock.name, 0, currentBlock.id);
                             } else if (currentBlock.type === 'text') {
                                 currentBlock.text = '';
                             }
@@ -180,7 +193,7 @@
                             } else if (event.delta.type === 'input_json_delta') {
                                 if (currentBlock) {
                                     currentBlock.input += event.delta.partial_json;
-                                    self.showToolProgress(currentBlock.name, currentBlock.input.length);
+                                    self.showToolProgress(currentBlock.name, currentBlock.input.length, currentBlock.id, currentBlock.input);
                                 }
                             }
                             break;
@@ -193,15 +206,21 @@
                                     } catch (e) {
                                         currentBlock.input = {};
                                     }
+                                    // Process tool immediately - don't wait for stream to end
+                                    self.processToolCallImmediate(currentBlock.id, currentBlock.name, currentBlock.input, 'anthropic');
                                 }
                                 contentBlocks.push(currentBlock);
                                 currentBlock = null;
                             }
                             break;
+
+                        case 'message_delta':
+                            if (event.delta && event.delta.stop_reason) {
+                                stopReason = event.delta.stop_reason;
+                            }
+                            break;
                     }
                 }
-
-                self.hideToolProgress();
 
                 contentBlocks.forEach(function(block) {
                     if (block.type === 'tool_use') {
@@ -225,8 +244,21 @@
                 this.messages.push({ role: 'assistant', content: filteredBlocks });
                 this.updateTokenCount();
 
+                // Mark any incomplete tools (e.g., truncated by max_tokens)
+                if (this.toolCardsState) {
+                    var processedIds = this.processedToolIds || {};
+                    Object.keys(this.toolCardsState).forEach(function(toolId) {
+                        if (!processedIds[toolId] && self.toolCardsState[toolId].state === 'generating') {
+                            var message = stopReason === 'max_tokens' ? 'Truncated (max tokens)' : 'Incomplete';
+                            self.setToolCardState(toolId, 'error', { message: message });
+                        }
+                    });
+                }
+
+                // Mark stream as complete and check if all tools resolved
+                this.streamComplete = true;
                 if (toolCalls.length > 0) {
-                    this.processToolCalls(toolCalls, 'anthropic');
+                    this.checkAllToolsResolved();
                 } else {
                     this.setLoading(false);
                     this.autoSaveConversation();
@@ -234,6 +266,8 @@
 
             } catch (error) {
                 this.hideToolProgress();
+                this.pendingToolResults = [];
+                this.pendingActions = [];
                 this.setLoading(false);
                 if (error.name !== 'AbortError') {
                     this.addMessage('error', 'Anthropic API error: ' + error.message);
@@ -260,7 +294,7 @@
                     },
                     body: JSON.stringify({
                         model: model,
-                        max_tokens: 4096,
+                        max_tokens: 16384,
                         stream: true,
                         messages: requestMessages,
                         tools: this.getToolsOpenAI()
@@ -276,7 +310,6 @@
                 var $reply = this.startReply();
                 var textContent = '';
                 var toolCallsMap = {};
-
                 for await (var chunk of this.readSSEStream(response)) {
                     var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
                     if (!delta) continue;
@@ -298,23 +331,23 @@
                                 if (tc.function.arguments) toolCallsMap[idx].function.arguments += tc.function.arguments;
                             }
                             var toolInfo = toolCallsMap[idx];
-                            if (toolInfo.function.name) {
-                                self.showToolProgress(toolInfo.function.name, toolInfo.function.arguments.length);
+                            if (toolInfo.function.name && toolInfo.id) {
+                                self.showToolProgress(toolInfo.function.name, toolInfo.function.arguments.length, toolInfo.id, toolInfo.function.arguments);
                             }
                         });
                     }
                 }
 
-                self.hideToolProgress();
-
                 var toolCalls = [];
                 Object.keys(toolCallsMap).forEach(function(idx) {
                     var tc = toolCallsMap[idx];
+                    var parsedArgs = JSON.parse(tc.function.arguments || '{}');
                     toolCalls.push({
                         id: tc.id,
                         name: tc.function.name,
-                        arguments: JSON.parse(tc.function.arguments || '{}')
+                        arguments: parsedArgs
                     });
+                    self.updateToolCardDescription(tc.id, tc.function.name, parsedArgs);
                 });
 
                 if (!textContent) {
@@ -339,6 +372,8 @@
 
             } catch (error) {
                 this.hideToolProgress();
+                this.pendingToolResults = [];
+                this.pendingActions = [];
                 this.setLoading(false);
                 if (error.name !== 'AbortError') {
                     this.addMessage('error', 'OpenAI API error: ' + error.message);
@@ -402,7 +437,6 @@
 
                 if (useOllamaApi) {
                     for await (var chunk of this.readOllamaStream(response)) {
-                        // Check for error events
                         if (chunk.error) {
                             throw new Error(chunk.error.message || chunk.error || 'Unknown error from Ollama');
                         }
@@ -414,16 +448,15 @@
                             chunk.message.tool_calls.forEach(function(tc, idx) {
                                 toolCallsMap[idx] = tc;
                                 if (tc.function && tc.function.name) {
-                                    var argsLength = tc.function.arguments ? JSON.stringify(tc.function.arguments).length : 0;
-                                    self.showToolProgress(tc.function.name, argsLength);
+                                    var toolId = tc.id || 'ollama_tool_' + idx;
+                                    var argsStr = tc.function.arguments ? JSON.stringify(tc.function.arguments) : '';
+                                    self.showToolProgress(tc.function.name, argsStr.length, toolId, argsStr);
                                 }
                             });
                         }
                     }
-                    self.hideToolProgress();
                 } else {
                     for await (var chunk of this.readSSEStream(response)) {
-                        // Check for error events from LM Studio/Ollama
                         if (chunk.error) {
                             throw new Error(chunk.error.message || chunk.message || 'Unknown error from local LLM');
                         }
@@ -449,23 +482,26 @@
                                 }
                                 var toolInfo = toolCallsMap[idx];
                                 if (toolInfo.function.name) {
-                                    self.showToolProgress(toolInfo.function.name, toolInfo.function.arguments.length);
+                                    var toolId = toolInfo.id || 'local_tool_' + idx;
+                                    self.showToolProgress(toolInfo.function.name, toolInfo.function.arguments.length, toolId, toolInfo.function.arguments);
                                 }
                             });
                         }
                     }
-                    self.hideToolProgress();
                 }
 
                 var toolCalls = [];
                 Object.keys(toolCallsMap).forEach(function(idx) {
                     var tc = toolCallsMap[idx];
                     if (tc.function) {
+                        var toolId = tc.id || 'tool_' + idx;
+                        var parsedArgs = JSON.parse(tc.function.arguments || '{}');
                         toolCalls.push({
-                            id: tc.id || 'tool_' + idx,
+                            id: toolId,
                             name: tc.function.name,
-                            arguments: JSON.parse(tc.function.arguments || '{}')
+                            arguments: parsedArgs
                         });
+                        self.updateToolCardDescription(toolId, tc.function.name, parsedArgs);
                     }
                 });
 
@@ -499,6 +535,8 @@
             } catch (error) {
                 if ($reply) $reply.remove();
                 this.hideToolProgress();
+                this.pendingToolResults = [];
+                this.pendingActions = [];
                 this.setLoading(false);
                 if (error.name !== 'AbortError') {
                     this.addMessage('error', 'Local LLM error: ' + error.message);
