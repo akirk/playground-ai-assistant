@@ -26,7 +26,7 @@ class Chat_UI {
      * Check if frontend display is enabled
      */
     private function is_frontend_enabled() {
-        return get_option('ai_assistant_show_on_frontend', '0') === '1';
+        return get_option('ai_assistant_show_on_frontend', '1') === '1';
     }
 
     /**
@@ -232,10 +232,15 @@ class Chat_UI {
                         $button.attr('aria-expanded', 'true');
 
                         if ($('#ai-assistant-messages').children().length === 0) {
-                            window.aiAssistant.loadWelcomeMessage();
+                            window.aiAssistant.loadMostRecentConversation();
                         }
                     }
                 });
+
+                // Auto-reopen if panel was open before navigation
+                if (window.aiAssistant && window.aiAssistant.shouldRestorePanel()) {
+                    $('#ai-assistant-link').trigger('click');
+                }
             } else {
                 // Standalone mode: matches WordPress screen-meta behavior exactly
                 var $wrap = $('#ai-assistant-standalone-wrap');
@@ -265,7 +270,7 @@ class Chat_UI {
                         $button.attr('aria-expanded', 'true');
 
                         if ($('#ai-assistant-messages').children().length === 0) {
-                            window.aiAssistant.loadWelcomeMessage();
+                            window.aiAssistant.loadMostRecentConversation();
                         }
                     }
                 });
@@ -276,6 +281,11 @@ class Chat_UI {
                         $button.trigger('click');
                     }
                 });
+
+                // Auto-reopen if panel was open before navigation
+                if (window.aiAssistant && window.aiAssistant.shouldRestorePanel()) {
+                    $button.trigger('click');
+                }
             }
         });
         </script>

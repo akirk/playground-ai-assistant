@@ -252,7 +252,7 @@ class Settings {
             'sanitize_callback' => function($value) {
                 return $value ? '1' : '';
             },
-            'default' => '',
+            'default' => '1',
         ]);
 
         // Provider section (localStorage-based, rendered via callback)
@@ -641,14 +641,13 @@ class Settings {
                 gap: 8px;
             }
             .ai-collapsible-section h2::before {
-                content: '\f142';
+                content: '\f345';
                 font-family: dashicons;
                 font-size: 20px;
                 transition: transform 0.2s;
-                transform: rotate(-90deg);
             }
             .ai-collapsible-section.expanded h2::before {
-                transform: rotate(0deg);
+                transform: rotate(90deg);
             }
             .ai-collapsible-section .ai-collapsible-content {
                 overflow: hidden;

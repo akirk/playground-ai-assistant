@@ -15,6 +15,7 @@
         draftStorageKey: 'aiAssistant_draftMessage',
         draftHistoryKey: 'aiAssistant_draftHistory',
         yoloStorageKey: 'aiAssistant_yoloMode',
+        panelOpenStorageKey: 'aiAssistant_panelOpen',
         conversationPreloaded: false,
         yoloMode: false,
         conversationProvider: '',
@@ -30,6 +31,7 @@
         abortController: null,
 
         init: function() {
+            var self = this;
             this.setupAjaxErrorTracking();
             this.bindEvents();
             this.buildSystemPrompt();
@@ -41,6 +43,11 @@
             this.conversationModel = this.getModel();
             this.updateSendButton();
             this.updateTokenCount();
+
+            // Save panel state on navigation
+            $(window).on('beforeunload', function() {
+                self.savePanelState();
+            });
 
             if (typeof aiAssistantPageConfig !== 'undefined') {
                 this.isFullPage = aiAssistantPageConfig.isFullPage || false;
@@ -383,6 +390,37 @@
         beforeUnloadHandler: function(e) {
             e.preventDefault();
             return e.returnValue = 'AI Assistant is still processing. Are you sure you want to leave?';
+        },
+
+        isPanelOpen: function() {
+            if (this.isFullPage) {
+                return true;
+            }
+            // Screen-meta mode
+            var $screenMetaButton = $('#ai-assistant-link');
+            if ($screenMetaButton.length) {
+                return $screenMetaButton.attr('aria-expanded') === 'true';
+            }
+            // Standalone mode
+            var $standaloneButton = $('#ai-assistant-standalone-trigger button');
+            if ($standaloneButton.length) {
+                return $standaloneButton.attr('aria-expanded') === 'true';
+            }
+            return false;
+        },
+
+        savePanelState: function() {
+            if (this.isPanelOpen()) {
+                localStorage.setItem(this.panelOpenStorageKey, '1');
+            } else {
+                localStorage.removeItem(this.panelOpenStorageKey);
+            }
+        },
+
+        shouldRestorePanel: function() {
+            var shouldRestore = localStorage.getItem(this.panelOpenStorageKey) === '1';
+            localStorage.removeItem(this.panelOpenStorageKey);
+            return shouldRestore;
         },
 
         isNearBottom: function(threshold) {
