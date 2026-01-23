@@ -277,9 +277,10 @@
                 this.processToolCalls(pendingToolCalls, provider === 'anthropic' ? 'anthropic' : 'openai');
             }
 
-            setTimeout(function() {
-                self.scrollToBottom(true);
-            }, 100);
+            // Show container and scroll to bottom
+            var $messages = $('#ai-assistant-messages');
+            $messages.css('visibility', 'visible');
+            this.scrollToBottom(true);
         },
 
         estimateTokens: function() {

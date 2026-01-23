@@ -270,6 +270,9 @@
         loadConversation: function(conversationId) {
             var self = this;
 
+            // Hide immediately to avoid showing stale content during load
+            $('#ai-assistant-messages').css('visibility', 'hidden');
+
             $.ajax({
                 url: aiAssistantConfig.ajaxUrl,
                 type: 'POST',
@@ -295,7 +298,8 @@
                             self.messages = [];
                         }
 
-                        $('#ai-assistant-messages').empty();
+                        var $messages = $('#ai-assistant-messages');
+                        $messages.css('visibility', 'hidden').empty();
 
                         // Use saved provider/model, fall back to current only for API calls
                         self.conversationProvider = response.data.provider || self.getProvider();
@@ -327,6 +331,9 @@
         loadMostRecentConversation: function() {
             var self = this;
 
+            // Hide immediately to avoid showing stale content during load
+            $('#ai-assistant-messages').css('visibility', 'hidden');
+
             $.ajax({
                 url: aiAssistantConfig.ajaxUrl,
                 type: 'POST',
@@ -338,7 +345,20 @@
                     if (response.success && response.data.conversations && response.data.conversations.length > 0) {
                         var mostRecent = response.data.conversations[0];
                         self.loadConversation(mostRecent.id);
+                    } else {
+                        // No conversations - show fresh welcome
+                        var $messages = $('#ai-assistant-messages');
+                        $messages.empty();
+                        self.loadWelcomeMessage();
+                        $messages.css('visibility', 'visible');
                     }
+                },
+                error: function() {
+                    // On error, show fresh welcome
+                    var $messages = $('#ai-assistant-messages');
+                    $messages.empty();
+                    self.loadWelcomeMessage();
+                    $messages.css('visibility', 'visible');
                 }
             });
         },
