@@ -696,23 +696,49 @@
             }
         },
 
+        getLanguageFromPath: function(path) {
+            if (!path) return null;
+            var ext = path.split('.').pop().toLowerCase();
+            var modeMap = {
+                'php': 'php',
+                'js': 'javascript',
+                'jsx': 'jsx',
+                'ts': 'javascript',
+                'tsx': 'jsx',
+                'css': 'css',
+                'scss': 'css',
+                'less': 'css',
+                'html': 'htmlmixed',
+                'htm': 'htmlmixed',
+                'xml': 'xml',
+                'json': 'javascript',
+                'md': 'markdown',
+                'sql': 'sql',
+                'sh': 'shell',
+                'bash': 'shell',
+                'yml': 'yaml',
+                'yaml': 'yaml'
+            };
+            return modeMap[ext] || null;
+        },
+
         getActionContentPreview: function(toolName, args) {
             var self = this;
             var content = null;
             var isEdit = false;
+            var language = null;
 
             switch (toolName) {
                 case 'write_file':
                 case 'append_file':
                     if (args.content) {
                         content = typeof args.content === 'string' ? args.content : JSON.stringify(args.content, null, 2);
-                        if (content.length > 2000) {
-                            content = content.substring(0, 2000) + '\n... (' + (content.length - 2000) + ' more characters)';
-                        }
+                        language = this.getLanguageFromPath(args.path);
                     }
                     break;
                 case 'edit_file':
                     isEdit = true;
+                    language = this.getLanguageFromPath(args.path);
                     if (args.edits && Array.isArray(args.edits)) {
                         var diffLines = [];
                         args.edits.forEach(function(edit, i) {
@@ -730,32 +756,14 @@
                 case 'run_php':
                     if (args.code) {
                         content = typeof args.code === 'string' ? args.code : JSON.stringify(args.code, null, 2);
+                        language = 'php';
                     }
                     break;
             }
 
             if (!content) return null;
 
-            var html;
-            if (isEdit) {
-                html = content.split('\n').map(function(line) {
-                    var escaped = self.escapeHtml(line);
-                    if (line.startsWith('+ ')) {
-                        return '<span class="ai-diff-line ai-diff-add">' + escaped + '</span>';
-                    } else if (line.startsWith('- ')) {
-                        return '<span class="ai-diff-line ai-diff-remove">' + escaped + '</span>';
-                    } else if (line.startsWith('---')) {
-                        return '<span class="ai-diff-line ai-diff-header">' + escaped + '</span>';
-                    } else if (line.startsWith('  ')) {
-                        return '<span class="ai-diff-line ai-diff-context">' + escaped + '</span>';
-                    }
-                    return '<span class="ai-diff-line">' + escaped + '</span>';
-                }).join('');
-            } else {
-                html = self.escapeHtml(content);
-            }
-
-            return { content: content, html: html, isEdit: isEdit };
+            return { content: content, isEdit: isEdit, language: language };
         },
 
         generateSmartDiff: function(search, replace) {

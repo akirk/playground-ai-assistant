@@ -308,6 +308,14 @@
     display: none;
 }
 
+.ai-message-streaming .ai-message-content:empty {
+    display: none;
+}
+
+.ai-message-streaming:has(.ai-message-content:empty) {
+    display: none;
+}
+
 .ai-action-btn {
     display: flex;
     align-items: center;
@@ -728,14 +736,18 @@
     margin-top: 6px;
     max-height: 250px;
     overflow: auto;
-    border: 1px solid #c3c4c7;
+    border: 1px solid #ddd;
     border-radius: 4px;
-    background: #f6f7f7;
+    background: #fff;
 }
 
 .ai-action-preview.expanded .ai-action-preview-content {
     display: block;
     max-height: 350px;
+}
+
+.ai-assistant-chat-container.expanded .ai-action-preview.expanded .ai-action-preview-content {
+    max-height: 500px;
 }
 
 /* When preview is expanded, make the action container stack vertically */
@@ -793,6 +805,31 @@
     font-weight: 600;
     background: #f0f6fc;
     margin-top: 4px;
+}
+
+/* Line numbers */
+.ai-code-preview.ai-code-with-lines {
+    counter-reset: line;
+}
+
+.ai-code-preview .ai-line {
+    display: block;
+    line-height: 1.4;
+    min-height: 1.4em;
+}
+
+.ai-code-preview .ai-line-number {
+    display: inline-block;
+    width: 3em;
+    padding-right: 1em;
+    text-align: right;
+    color: #a0a5aa;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.ai-code-preview .ai-line-content {
+    display: inline;
 }
 
 .ai-action-buttons {

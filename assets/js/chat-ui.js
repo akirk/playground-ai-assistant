@@ -85,18 +85,42 @@
         },
 
         addToolUseMessage: function(toolName, input) {
+            var self = this;
             var $messages = $('#ai-assistant-messages');
             var description = this.getActionDescription(toolName, input || {});
 
-            var html = '<div class="ai-tool-card ai-tool-card-completed">' +
+            var $card = $('<div class="ai-tool-card ai-tool-card-completed">' +
                 '<div class="ai-tool-card-header">' +
                 '<span class="ai-tool-card-name">' + this.escapeHtml(toolName) + '</span>' +
                 '<span class="ai-tool-card-status">Completed</span>' +
                 '</div>' +
                 '<div class="ai-tool-card-desc">' + this.escapeHtml(description) + '</div>' +
-                '</div>';
+                '<div class="ai-tool-card-preview"></div>' +
+                '</div>');
 
-            $messages.append(html);
+            // Add preview if available
+            var preview = this.getActionContentPreview(toolName, input || {});
+            if (preview) {
+                var previewLabel = preview.isEdit ? 'Show changes' : 'Show content';
+                var contentStr = typeof preview.content === 'string' ? preview.content : String(preview.content || '');
+                contentStr = contentStr.trim();
+                var lineCount = (contentStr.match(/\n/g) || []).length + 1;
+                var autoExpand = lineCount <= 5;
+                var previewHtml = '<div class="ai-action-preview' + (autoExpand ? ' expanded' : '') + '"' +
+                    ' data-language="' + (preview.language || '') + '"' +
+                    ' data-is-edit="' + (preview.isEdit ? '1' : '0') + '">' +
+                    '<button type="button" class="ai-action-preview-toggle">' +
+                    '<span class="dashicons dashicons-arrow-right-alt2"></span>' +
+                    previewLabel + ' (' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</button>' +
+                    '<div class="ai-action-preview-content"><pre class="ai-code-preview"></pre></div>' +
+                    '</div>';
+                $card.find('.ai-tool-card-preview').html(previewHtml);
+
+                var $pre = $card.find('.ai-code-preview');
+                this.highlightCode($pre[0], contentStr, preview.language, preview.isEdit);
+            }
+
+            $messages.append($card);
         },
 
         formatContent: function(content) {
@@ -168,6 +192,25 @@
         rebuildMessagesUI: function() {
             var self = this;
 
+            // First pass: collect resolved tool IDs
+            var resolvedToolIds = {};
+            this.messages.forEach(function(msg) {
+                if (msg.role === 'user' && Array.isArray(msg.content)) {
+                    msg.content.forEach(function(block) {
+                        if (block.type === 'tool_result' && block.tool_use_id) {
+                            resolvedToolIds[block.tool_use_id] = true;
+                        }
+                    });
+                }
+                if (msg.role === 'tool' && msg.tool_call_id) {
+                    resolvedToolIds[msg.tool_call_id] = true;
+                }
+            });
+
+            // Collect pending tool calls to process at the end
+            var pendingToolCalls = [];
+
+            // Second pass: render messages
             this.messages.forEach(function(msg) {
                 if (msg.role === 'user') {
                     if (typeof msg.content === 'string' && msg.content.trim()) {
@@ -189,7 +232,15 @@
                             if (block.type === 'text' && block.text && block.text.trim()) {
                                 self.addMessage('assistant', block.text);
                             } else if (block.type === 'tool_use') {
-                                self.addToolUseMessage(block.name, block.input || block.arguments || {});
+                                if (resolvedToolIds[block.id]) {
+                                    self.addToolUseMessage(block.name, block.input || block.arguments || {});
+                                } else {
+                                    pendingToolCalls.push({
+                                        id: block.id,
+                                        name: block.name,
+                                        arguments: block.input || block.arguments || {}
+                                    });
+                                }
                             }
                         });
                     }
@@ -199,15 +250,32 @@
                             var args = tc.function ? tc.function.arguments : tc.arguments;
                             var name = tc.function ? tc.function.name : tc.name;
                             try {
-                                args = JSON.parse(args);
-                            } catch(e) {}
-                            self.addToolUseMessage(name, args || {});
+                                if (typeof args === 'string') args = JSON.parse(args);
+                            } catch(e) { args = {}; }
+                            if (resolvedToolIds[tc.id]) {
+                                self.addToolUseMessage(name, args || {});
+                            } else {
+                                pendingToolCalls.push({
+                                    id: tc.id,
+                                    name: name,
+                                    arguments: args || {}
+                                });
+                            }
                         });
                     }
                 } else if (msg.role === 'tool') {
                     // Skip - shown with tool_use
                 }
             });
+
+            // Process pending tool calls through normal flow
+            if (pendingToolCalls.length > 0) {
+                var provider = this.conversationProvider || this.getProvider();
+                this.streamComplete = true;
+                this.executingToolCount = 0;
+                this.pendingToolResults = [];
+                this.processToolCalls(pendingToolCalls, provider === 'anthropic' ? 'anthropic' : 'openai');
+            }
 
             setTimeout(function() {
                 self.scrollToBottom(true);
@@ -260,6 +328,98 @@
             if (bytes < 1024) return bytes + ' B';
             if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        },
+
+        highlightCode: function(element, code, language, isEdit) {
+            // Clear existing content
+            element.textContent = '';
+
+            if (isEdit) {
+                // For diffs, render with line-by-line coloring using DOM methods
+                var lines = code.split('\n');
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i];
+                    var span = document.createElement('span');
+                    span.className = 'ai-diff-line';
+                    span.textContent = line;
+
+                    if (line.startsWith('+ ')) {
+                        span.classList.add('ai-diff-add');
+                    } else if (line.startsWith('- ')) {
+                        span.classList.add('ai-diff-remove');
+                    } else if (line.startsWith('---')) {
+                        span.classList.add('ai-diff-header');
+                    } else if (line.startsWith('  ')) {
+                        span.classList.add('ai-diff-context');
+                    }
+
+                    element.appendChild(span);
+                }
+                return;
+            }
+
+            // Try CodeMirror syntax highlighting
+            if (language && wp.CodeMirror && wp.CodeMirror.runMode) {
+                var CM = wp.CodeMirror;
+                // Only map languages that differ from their CodeMirror mode name
+                var modeMap = {
+                    'js': 'javascript',
+                    'html': 'htmlmixed',
+                    'json': {name: 'javascript', json: true}
+                };
+                var modeName = modeMap[language] || language;
+
+                try {
+                    var codeToHighlight = code;
+                    var prependedPhpTag = false;
+
+                    // PHP needs <?php tag for proper highlighting
+                    if (modeName === 'php' && !code.trim().startsWith('<?')) {
+                        codeToHighlight = '<?php\n' + code;
+                        prependedPhpTag = true;
+                    }
+
+                    var mode = CM.getMode({}, modeName);
+                    element.classList.add('cm-s-default');
+                    CM.runMode(codeToHighlight, mode, element);
+
+                    // Remove the prepended <?php tag from output
+                    if (prependedPhpTag) {
+                        var firstChild = element.firstChild;
+                        if (firstChild && firstChild.classList && firstChild.classList.contains('cm-meta')) {
+                            firstChild.remove();
+                            // Also remove the newline text node if present
+                            if (element.firstChild && element.firstChild.nodeType === 3 && element.firstChild.textContent === '\n') {
+                                element.firstChild.remove();
+                            }
+                        }
+                    } else {
+                        // Add line numbers (only when we didn't prepend <?php)
+                        this.addLineNumbers(element);
+                    }
+                    return;
+                } catch (e) {
+                    console.warn('[AI Assistant] CodeMirror.runMode failed for mode:', modeName, e);
+                }
+            }
+
+            // Fallback: plain escaped text
+            element.textContent = code;
+        },
+
+        addLineNumbers: function(element) {
+            // Get current HTML and split into lines
+            var html = element.innerHTML;
+            var lines = html.split('\n');
+
+            // Build new HTML with line numbers (no newlines between - they're block elements)
+            var numberedHtml = lines.map(function(line, i) {
+                var lineNum = i + 1;
+                return '<span class="ai-line"><span class="ai-line-number">' + lineNum + '</span><span class="ai-line-content">' + (line || ' ') + '</span></span>';
+            }).join('');
+
+            element.innerHTML = numberedHtml;
+            element.classList.add('ai-code-with-lines');
         },
 
         getToolCardsContainer: function() {
@@ -394,13 +554,19 @@
                     var contentStr = typeof preview.content === 'string' ? preview.content : String(preview.content || '');
                     contentStr = contentStr.trim();
                     var lineCount = (contentStr.match(/\n/g) || []).length + 1;
-                    var previewHtml = '<div class="ai-action-preview">' +
+                    var autoExpand = lineCount <= 5;
+                    var previewHtml = '<div class="ai-action-preview' + (autoExpand ? ' expanded' : '') + '"' +
+                        ' data-language="' + (preview.language || '') + '"' +
+                        ' data-is-edit="' + (preview.isEdit ? '1' : '0') + '">' +
                         '<button type="button" class="ai-action-preview-toggle">' +
                         '<span class="dashicons dashicons-arrow-right-alt2"></span>' +
-                        previewLabel + ' (' + lineCount + ' lines)</button>' +
-                        '<div class="ai-action-preview-content"><pre>' + preview.html + '</pre></div>' +
+                        previewLabel + ' (' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</button>' +
+                        '<div class="ai-action-preview-content"><pre class="ai-code-preview"></pre></div>' +
                         '</div>';
                     $card.find('.ai-tool-card-preview').html(previewHtml);
+
+                    var $pre = $card.find('.ai-code-preview');
+                    this.highlightCode($pre[0], contentStr, preview.language, preview.isEdit);
                 }
             }
         },

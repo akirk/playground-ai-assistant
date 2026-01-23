@@ -40,9 +40,11 @@ class Chat_UI {
         wp_enqueue_style(
             'ai-assistant-chat',
             AI_ASSISTANT_PLUGIN_URL . 'assets/css/chat.css',
-            [],
+            ['wp-codemirror'],
             AI_ASSISTANT_VERSION
         );
+
+        wp_enqueue_script('wp-codemirror');
 
         wp_enqueue_script(
             'ai-assistant-chat-core',

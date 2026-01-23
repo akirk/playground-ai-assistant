@@ -244,6 +244,9 @@
                 this.messages.push({ role: 'assistant', content: filteredBlocks });
                 this.updateTokenCount();
 
+                // Save conversation before processing tools (in case user reloads while pending)
+                this.autoSaveConversation();
+
                 // Mark any incomplete tools (e.g., truncated by max_tokens)
                 if (this.toolCardsState) {
                     var processedIds = this.processedToolIds || {};
@@ -363,11 +366,13 @@
                 this.messages.push(message);
                 this.updateTokenCount();
 
+                // Save conversation before processing tools (in case user reloads while pending)
+                this.autoSaveConversation();
+
                 if (toolCalls.length > 0) {
                     this.processToolCalls(toolCalls, 'openai');
                 } else {
                     this.setLoading(false);
-                    this.autoSaveConversation();
                 }
 
             } catch (error) {
@@ -525,11 +530,13 @@
                 this.messages.push(message);
                 this.updateTokenCount();
 
+                // Save conversation before processing tools (in case user reloads while pending)
+                this.autoSaveConversation();
+
                 if (toolCalls.length > 0) {
                     this.processToolCalls(toolCalls, 'openai');
                 } else {
                     this.setLoading(false);
-                    this.autoSaveConversation();
                 }
 
             } catch (error) {
