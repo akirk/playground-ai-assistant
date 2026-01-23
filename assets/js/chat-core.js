@@ -15,7 +15,6 @@
         draftStorageKey: 'aiAssistant_draftMessage',
         draftHistoryKey: 'aiAssistant_draftHistory',
         yoloStorageKey: 'aiAssistant_yoloMode',
-        panelOpenStorageKey: 'aiAssistant_panelOpen',
         conversationPreloaded: false,
         yoloMode: false,
         conversationProvider: '',
@@ -43,11 +42,6 @@
             this.conversationModel = this.getModel();
             this.updateSendButton();
             this.updateTokenCount();
-
-            // Save panel state on navigation
-            $(window).on('beforeunload', function() {
-                self.savePanelState();
-            });
 
             if (typeof aiAssistantPageConfig !== 'undefined') {
                 this.isFullPage = aiAssistantPageConfig.isFullPage || false;
@@ -412,20 +406,6 @@
                 return $standaloneButton.attr('aria-expanded') === 'true';
             }
             return false;
-        },
-
-        savePanelState: function() {
-            if (this.isPanelOpen()) {
-                localStorage.setItem(this.panelOpenStorageKey, '1');
-            } else {
-                localStorage.removeItem(this.panelOpenStorageKey);
-            }
-        },
-
-        shouldRestorePanel: function() {
-            var shouldRestore = localStorage.getItem(this.panelOpenStorageKey) === '1';
-            localStorage.removeItem(this.panelOpenStorageKey);
-            return shouldRestore;
         },
 
         isNearBottom: function(threshold) {

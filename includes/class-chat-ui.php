@@ -237,8 +237,9 @@ class Chat_UI {
                     }
                 });
 
-                // Auto-reopen if panel was open before navigation
-                if (window.aiAssistant && window.aiAssistant.shouldRestorePanel()) {
+                // Auto-reopen if navigated here via tool call
+                if (window.location.hash.indexOf('ai-open') !== -1) {
+                    history.replaceState(null, '', window.location.href.replace(/#.*ai-open.*$/, ''));
                     $('#ai-assistant-link').trigger('click');
                 }
             } else {
@@ -282,8 +283,9 @@ class Chat_UI {
                     }
                 });
 
-                // Auto-reopen if panel was open before navigation
-                if (window.aiAssistant && window.aiAssistant.shouldRestorePanel()) {
+                // Auto-reopen if navigated here via tool call
+                if (window.location.hash.indexOf('ai-open') !== -1) {
+                    history.replaceState(null, '', window.location.href.replace(/#.*ai-open.*$/, ''));
                     $button.trigger('click');
                 }
             }

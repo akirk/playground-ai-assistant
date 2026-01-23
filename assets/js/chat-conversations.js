@@ -240,8 +240,11 @@
         saveConversationThenNavigate: function(targetUrl) {
             var self = this;
 
+            // Add hash to reopen panel after navigation
+            var urlWithHash = targetUrl + (targetUrl.indexOf('#') === -1 ? '#' : '&') + 'ai-open';
+
             if (this.messages.length === 0) {
-                window.location.href = targetUrl;
+                window.location.href = urlWithHash;
                 return;
             }
 
@@ -258,11 +261,11 @@
                     model: this.conversationModel
                 },
                 success: function() {
-                    window.location.href = targetUrl;
+                    window.location.href = urlWithHash;
                 },
                 error: function() {
                     console.error('[AI Assistant] Failed to save conversation before navigation');
-                    window.location.href = targetUrl;
+                    window.location.href = urlWithHash;
                 }
             });
         },
