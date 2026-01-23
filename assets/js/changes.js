@@ -15,6 +15,7 @@
         },
 
         autoExpandFromUrl: function() {
+            var self = this;
             var params = new URLSearchParams(window.location.search);
             var pluginPath = params.get('plugin');
 
@@ -26,6 +27,7 @@
 
                     $toggle.text('▼');
                     $content.show();
+                    self.lintFilesInCard($card);
 
                     // Scroll to the card
                     $('html, body').animate({
@@ -48,6 +50,10 @@
 
                 $toggle.text(willBeVisible ? '▼' : '▶');
                 $content.slideToggle(200);
+
+                if (willBeVisible) {
+                    self.lintFilesInCard($card);
+                }
             });
 
             // Per-file preview toggle
@@ -479,12 +485,12 @@
         updateFileState: function(filePath, $button, isReverted) {
             var $row = $button.closest('.ai-changes-file-row');
             var $label = $row.find('label');
-            var $lintStatus = $label.find('.ai-lint-status');
+            var $changeType = $label.find('.ai-changes-type').not('.ai-changes-type-reverted').last();
 
             if (isReverted) {
-                // Add reverted badge before the lint status
+                // Add reverted badge after the change type badge
                 if ($label.find('.ai-changes-type-reverted').length === 0) {
-                    $('<span class="ai-changes-type ai-changes-type-reverted">Reverted</span>').insertBefore($lintStatus);
+                    $('<span class="ai-changes-type ai-changes-type-reverted">Reverted</span>').insertAfter($changeType);
                 }
                 // Replace button with Reapply
                 $button
@@ -565,34 +571,19 @@
             });
         },
 
-        lintAllPhpFiles: function() {
+        lintFilesInCard: function($card) {
             var self = this;
-
-            if (!('IntersectionObserver' in window)) {
-                // Fallback for old browsers - lint all immediately
-                $('.ai-lint-status').each(function() {
-                    self.lintFile($(this).data('path'));
-                });
-                return;
-            }
-
-            var observer = new IntersectionObserver(function(entries) {
-                entries.forEach(function(entry) {
-                    if (entry.isIntersecting) {
-                        var $status = $(entry.target);
-                        var filePath = $status.data('path');
-                        if (!$status.data('linted')) {
-                            $status.data('linted', true);
-                            self.lintFile(filePath);
-                        }
-                        observer.unobserve(entry.target);
-                    }
-                });
-            }, { rootMargin: '100px' });
-
-            $('.ai-lint-status').each(function() {
-                observer.observe(this);
+            $card.find('.ai-lint-status').each(function() {
+                var $status = $(this);
+                if (!$status.data('linted')) {
+                    self.lintFile($status.data('path'));
+                }
             });
+        },
+
+        lintAllPhpFiles: function() {
+            // This is now a no-op since we lint on-demand when cards are expanded
+            // Keep the method for compatibility
         },
 
         lintFile: function(filePath) {

@@ -271,6 +271,7 @@ class Changes_Admin {
                                                data-path="<?php echo esc_attr($file['path']); ?>"
                                                data-plugin="<?php echo esc_attr($plugin_path); ?>">
                                         <span class="ai-changes-file-path"><?php echo esc_html($file['relative_path'] ?: basename($file['path'])); ?></span>
+                                        <span class="ai-lint-status" data-path="<?php echo esc_attr($file['path']); ?>"></span>
                                         <span class="ai-changes-type ai-changes-type-<?php echo esc_attr($file['change_type']); ?>">
                                             <?php echo esc_html(ucfirst($file['change_type'])); ?>
                                         </span>
@@ -279,7 +280,6 @@ class Changes_Admin {
                                             <?php esc_html_e('Reverted', 'ai-assistant'); ?>
                                         </span>
                                         <?php endif; ?>
-                                        <span class="ai-lint-status" data-path="<?php echo esc_attr($file['path']); ?>"></span>
                                     </label>
                                     <?php if (!empty($file['is_reverted'])): ?>
                                     <button type="button" class="button button-small ai-reapply-file" data-path="<?php echo esc_attr($file['path']); ?>" title="<?php esc_attr_e('Reapply this change', 'ai-assistant'); ?>">
