@@ -408,8 +408,28 @@ class Settings {
                         models = await fetchOpenAIModels(apiKey);
                     }
                 } else if (provider === 'local') {
-                    var endpoint = $('#ai_local_endpoint').val() || getSetting('localEndpoint') || 'http://localhost:11434';
-                    models = await fetchLocalModels(endpoint);
+                    var endpoint = $('#ai_local_endpoint').val() || getSetting('localEndpoint');
+                    var $endpointInput = $('#ai_local_endpoint');
+                    var $status = $endpointInput.siblings('.ai-connection-status');
+
+                    // Try current endpoint first
+                    if (endpoint) {
+                        models = await fetchLocalModels(endpoint);
+                    }
+
+                    // If no models found, auto-detect
+                    if (!models || models.length === 0) {
+                        $status.text('<?php echo esc_js(__('Auto-detecting...', 'ai-assistant')); ?>').removeClass('success error');
+                        var detected = await autoDetectLocalEndpoint();
+                        if (detected) {
+                            $endpointInput.val(detected.url);
+                            setSetting('localEndpoint', detected.url);
+                            $status.text('<?php echo esc_js(__('Found', 'ai-assistant')); ?> ' + detected.name + '!').addClass('success');
+                            models = await fetchLocalModels(detected.url);
+                        } else {
+                            $status.text('<?php echo esc_js(__('No local LLM found', 'ai-assistant')); ?>').addClass('error');
+                        }
+                    }
                 }
 
                 $modelSelect.empty().append('<option value=""><?php echo esc_js(__('Select a model...', 'ai-assistant')); ?></option>');
@@ -464,23 +484,62 @@ class Settings {
                 return [];
             }
 
+            function normalizeEndpoint(endpoint) {
+                endpoint = endpoint.trim().replace(/\/$/, '');
+                if (endpoint && !endpoint.match(/^https?:\/\//)) {
+                    endpoint = 'http://' + endpoint;
+                }
+                return endpoint;
+            }
+
             async function fetchLocalModels(endpoint) {
-                endpoint = endpoint.replace(/\/$/, '');
-                try {
-                    var response = await fetch(endpoint + '/api/tags');
-                    if (response.ok) {
-                        var data = await response.json();
-                        return (data.models || []).map(function(m) { return {id: m.name, name: m.name}; });
-                    }
-                } catch (e) {}
+                endpoint = normalizeEndpoint(endpoint);
+                if (!endpoint) return [];
+                // Try OpenAI-compatible endpoint first (works with LM Studio, Ollama, etc.)
                 try {
                     var response = await fetch(endpoint + '/v1/models');
                     if (response.ok) {
                         var data = await response.json();
-                        return (data.data || []).map(function(m) { return {id: m.id, name: m.id}; });
+                        if (data.data && data.data.length > 0) {
+                            return data.data.map(function(m) { return {id: m.id, name: m.id}; });
+                        }
+                    }
+                } catch (e) {}
+                // Fall back to Ollama-specific endpoint
+                try {
+                    var response = await fetch(endpoint + '/api/tags');
+                    if (response.ok) {
+                        var data = await response.json();
+                        if (data.models && data.models.length > 0) {
+                            return data.models.map(function(m) { return {id: m.name, name: m.name}; });
+                        }
                     }
                 } catch (e) {}
                 return [];
+            }
+
+            // Auto-detect local LLM endpoint
+            async function autoDetectLocalEndpoint() {
+                var endpoints = [
+                    { url: 'http://localhost:11434', name: 'Ollama', test: '/api/tags' },
+                    { url: 'http://127.0.0.1:11434', name: 'Ollama', test: '/api/tags' },
+                    { url: 'http://localhost:1234', name: 'LM Studio', test: '/v1/models' },
+                    { url: 'http://127.0.0.1:1234', name: 'LM Studio', test: '/v1/models' }
+                ];
+
+                for (var i = 0; i < endpoints.length; i++) {
+                    var ep = endpoints[i];
+                    try {
+                        var controller = new AbortController();
+                        var timeout = setTimeout(function() { controller.abort(); }, 2000);
+                        var response = await fetch(ep.url + ep.test, { signal: controller.signal });
+                        clearTimeout(timeout);
+                        if (response.ok) {
+                            return { url: ep.url, name: ep.name };
+                        }
+                    } catch (e) {}
+                }
+                return null;
             }
 
             // Test connection
@@ -515,20 +574,35 @@ class Settings {
                         message = success ? '<?php echo esc_js(__('Connected!', 'ai-assistant')); ?>' : '<?php echo esc_js(__('Invalid API key', 'ai-assistant')); ?>';
                     } catch (e) { message = e.message; }
                 } else if (provider === 'local') {
-                    var endpoint = $('#ai_local_endpoint').val() || 'http://localhost:11434';
+                    var endpoint = normalizeEndpoint($('#ai_local_endpoint').val() || 'localhost:11434');
+                    var serverType = '';
+                    // Try Ollama endpoint
                     try {
-                        var response = await fetch(endpoint.replace(/\/$/, '') + '/api/tags');
-                        success = response.ok;
-                        message = success ? '<?php echo esc_js(__('Connected to Ollama!', 'ai-assistant')); ?>' : '';
+                        var response = await fetch(endpoint + '/api/tags');
+                        if (response.ok) {
+                            var data = await response.json();
+                            if (data.models) {
+                                success = true;
+                                serverType = 'Ollama';
+                            }
+                        }
                     } catch (e) {}
+                    // Try OpenAI-compatible endpoint (LM Studio, etc.)
                     if (!success) {
                         try {
-                            var response = await fetch(endpoint.replace(/\/$/, '') + '/v1/models');
-                            success = response.ok;
-                            message = success ? '<?php echo esc_js(__('Connected to LM Studio!', 'ai-assistant')); ?>' : '';
+                            var response = await fetch(endpoint + '/v1/models');
+                            if (response.ok) {
+                                var data = await response.json();
+                                if (data.data) {
+                                    success = true;
+                                    serverType = 'LM Studio';
+                                }
+                            }
                         } catch (e) {}
                     }
-                    if (!success) { message = '<?php echo esc_js(__('Could not connect', 'ai-assistant')); ?>'; }
+                    message = success
+                        ? '<?php echo esc_js(__('Connected to', 'ai-assistant')); ?> ' + serverType + '!'
+                        : '<?php echo esc_js(__('Could not connect', 'ai-assistant')); ?>';
                 }
 
                 $status.text(message).addClass(success ? 'success' : 'error');

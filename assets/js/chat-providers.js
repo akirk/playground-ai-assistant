@@ -369,6 +369,9 @@
                 // Save conversation before processing tools (in case user reloads while pending)
                 this.autoSaveConversation();
 
+                // Mark stream as complete before processing tools
+                this.streamComplete = true;
+
                 if (toolCalls.length > 0) {
                     this.processToolCalls(toolCalls, 'openai');
                 } else {
@@ -532,6 +535,9 @@
 
                 // Save conversation before processing tools (in case user reloads while pending)
                 this.autoSaveConversation();
+
+                // Mark stream as complete before processing tools
+                this.streamComplete = true;
 
                 if (toolCalls.length > 0) {
                     this.processToolCalls(toolCalls, 'openai');
