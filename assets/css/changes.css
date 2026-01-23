@@ -810,3 +810,31 @@
     color: #646970;
     font-style: italic;
 }
+
+/* CodeMirror diff mode syntax highlighting */
+.ai-diff-content .cm-positive,
+.ai-file-inline-preview .cm-positive,
+.ai-commit-diff-preview .cm-positive {
+    color: #007017;
+    background: #d4edda;
+}
+
+.ai-diff-content .cm-negative,
+.ai-file-inline-preview .cm-negative,
+.ai-commit-diff-preview .cm-negative {
+    color: #8a1f1f;
+    background: #f8d7da;
+}
+
+.ai-diff-content .cm-meta,
+.ai-file-inline-preview .cm-meta,
+.ai-commit-diff-preview .cm-meta {
+    color: #9a6700;
+}
+
+.ai-diff-content .cm-header,
+.ai-file-inline-preview .cm-header,
+.ai-commit-diff-preview .cm-header {
+    color: #2271b1;
+    font-weight: 600;
+}

@@ -292,39 +292,11 @@
         },
 
         highlightDiff: function(diff) {
-            var lines = diff.split('\n');
-            var html = [];
-
-            for (var i = 0; i < lines.length; i++) {
-                var line = this.escapeHtml(lines[i]);
-                var cssClass = '';
-
-                if (line.match(/^diff --git/)) {
-                    cssClass = 'diff-header';
-                } else if (line.match(/^@@/)) {
-                    cssClass = 'diff-hunk';
-                } else if (line.match(/^---/) || line.match(/^\+\+\+/)) {
-                    cssClass = 'diff-file';
-                } else if (line.match(/^\+/)) {
-                    cssClass = 'diff-add';
-                } else if (line.match(/^-/)) {
-                    cssClass = 'diff-del';
-                }
-
-                if (cssClass) {
-                    html.push('<span class="' + cssClass + '">' + line + '</span>');
-                } else {
-                    html.push('<span>' + line + '</span>');
-                }
-            }
-
-            return html.join('\n');
-        },
-
-        escapeHtml: function(text) {
-            var div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+            var mode = wp.CodeMirror.getMode({}, 'diff');
+            var container = document.createElement('pre');
+            container.className = 'cm-s-default';
+            wp.CodeMirror.runMode(diff, mode, container);
+            return container.innerHTML;
         },
 
         toggleFilePreview: function($toggle) {

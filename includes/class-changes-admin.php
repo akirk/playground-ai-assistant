@@ -75,14 +75,16 @@ class Changes_Admin {
         wp_enqueue_style(
             'ai-assistant-changes',
             AI_ASSISTANT_PLUGIN_URL . 'assets/css/changes.css',
-            [],
+            ['wp-codemirror'],
             AI_ASSISTANT_VERSION
         );
+
+        wp_enqueue_script('wp-codemirror');
 
         wp_enqueue_script(
             'ai-assistant-changes',
             AI_ASSISTANT_PLUGIN_URL . 'assets/js/changes.js',
-            ['jquery'],
+            ['jquery', 'wp-codemirror'],
             AI_ASSISTANT_VERSION,
             true
         );
