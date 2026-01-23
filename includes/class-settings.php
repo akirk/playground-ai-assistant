@@ -247,7 +247,13 @@ class Settings {
      */
     public function register_settings() {
         // Display settings (only server-side setting now)
-        register_setting('ai_assistant_settings', 'ai_assistant_show_on_frontend');
+        register_setting('ai_assistant_settings', 'ai_assistant_show_on_frontend', [
+            'type' => 'string',
+            'sanitize_callback' => function($value) {
+                return $value ? '1' : '';
+            },
+            'default' => '',
+        ]);
 
         // Provider section (localStorage-based, rendered via callback)
         add_settings_section(
