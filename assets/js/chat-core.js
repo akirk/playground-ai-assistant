@@ -262,6 +262,11 @@
                 $(this).closest('.ai-action-preview').toggleClass('expanded');
             });
 
+            $(document).on('click', '.ai-thinking-toggle', function(e) {
+                e.preventDefault();
+                $(this).closest('.ai-thinking-block').toggleClass('expanded');
+            });
+
             $(document).on('dblclick', '.ai-conv-item-title', function(e) {
                 e.stopPropagation();
                 var $title = $(this);

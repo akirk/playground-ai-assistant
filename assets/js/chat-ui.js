@@ -69,6 +69,34 @@
             return $message;
         },
 
+        startThinking: function() {
+            var $messages = $('#ai-assistant-messages');
+            var $thinking = $('<div class="ai-thinking-block">' +
+                '<button type="button" class="ai-thinking-toggle">' +
+                '<span class="ai-thinking-spinner"></span>' +
+                '<span class="ai-thinking-label">Thinking...</span>' +
+                '<span class="dashicons dashicons-arrow-right-alt2"></span>' +
+                '</button>' +
+                '<div class="ai-thinking-content"></div>' +
+                '</div>');
+            $messages.append($thinking);
+            this.scrollToBottom();
+            return $thinking;
+        },
+
+        updateThinking: function($thinking, text) {
+            var $content = $thinking.find('.ai-thinking-content');
+            $content.text(text);
+            this.scrollToBottom();
+        },
+
+        finalizeThinking: function($thinking, durationMs) {
+            $thinking.find('.ai-thinking-spinner').hide();
+            var durationSec = (durationMs / 1000).toFixed(1);
+            $thinking.find('.ai-thinking-label').text('Thought for ' + durationSec + 's');
+            $thinking.addClass('ai-thinking-complete');
+        },
+
         updateReply: function($message, text) {
             var $content = $message.find('.ai-message-content');
             $content.html(this.formatContent(text));

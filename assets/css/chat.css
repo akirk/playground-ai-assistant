@@ -1513,3 +1513,76 @@ body:not(.wp-admin) .ai-assistant-standalone-trigger button:focus {
         margin-right: 0;
     }
 }
+
+/* Thinking/Reasoning block (OpenAI o1, o3 models) */
+.ai-thinking-block {
+    margin: 8px 14px;
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.ai-thinking-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    color: #50575e;
+    text-align: left;
+}
+
+.ai-thinking-toggle:hover {
+    background: #f0f0f1;
+}
+
+.ai-thinking-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid #c3c4c7;
+    border-top-color: #2271b1;
+    border-radius: 50%;
+    animation: ai-tool-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+.ai-thinking-label {
+    flex: 1;
+    font-weight: 500;
+}
+
+.ai-thinking-toggle .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    transition: transform 0.2s ease;
+}
+
+.ai-thinking-block.expanded .ai-thinking-toggle .dashicons {
+    transform: rotate(90deg);
+}
+
+.ai-thinking-content {
+    display: none;
+    padding: 0 12px 12px;
+    font-size: 12px;
+    color: #50575e;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+    border-top: 1px solid #dcdcde;
+}
+
+.ai-thinking-block.expanded .ai-thinking-content {
+    display: block;
+}
+
+.ai-thinking-complete .ai-thinking-label {
+    color: #787c82;
+}

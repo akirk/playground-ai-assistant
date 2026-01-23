@@ -311,13 +311,33 @@
                 }
 
                 var $reply = this.startReply();
+                var $thinking = null;
+                var thinkingContent = '';
+                var thinkingStartTime = null;
                 var textContent = '';
                 var toolCallsMap = {};
                 for await (var chunk of this.readSSEStream(response)) {
                     var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
                     if (!delta) continue;
 
+                    // Handle reasoning/thinking content (o1, o3 models)
+                    if (delta.reasoning_content) {
+                        if (!$thinking) {
+                            $thinking = this.startThinking();
+                            thinkingStartTime = Date.now();
+                            $reply.remove();
+                        }
+                        thinkingContent += delta.reasoning_content;
+                        this.updateThinking($thinking, thinkingContent);
+                    }
+
                     if (delta.content) {
+                        // Transition from thinking to response
+                        if ($thinking && thinkingStartTime) {
+                            this.finalizeThinking($thinking, Date.now() - thinkingStartTime);
+                            $reply = this.startReply();
+                            $thinking = null;
+                        }
                         textContent += delta.content;
                         this.updateReply($reply, textContent);
                     }
@@ -339,6 +359,12 @@
                             }
                         });
                     }
+                }
+
+                // Finalize thinking if stream ended during thinking phase
+                if ($thinking && thinkingStartTime) {
+                    this.finalizeThinking($thinking, Date.now() - thinkingStartTime);
+                    $reply = this.startReply();
                 }
 
                 var toolCalls = [];
@@ -440,6 +466,9 @@
                 }
 
                 var $reply = this.startReply();
+                var $thinking = null;
+                var thinkingContent = '';
+                var thinkingStartTime = null;
                 var textContent = '';
                 var toolCallsMap = {};
 
@@ -472,7 +501,24 @@
                         var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
                         if (!delta) continue;
 
+                        // Handle reasoning/thinking content (DeepSeek, etc.)
+                        if (delta.reasoning_content) {
+                            if (!$thinking) {
+                                $thinking = this.startThinking();
+                                thinkingStartTime = Date.now();
+                                $reply.remove();
+                            }
+                            thinkingContent += delta.reasoning_content;
+                            this.updateThinking($thinking, thinkingContent);
+                        }
+
                         if (delta.content) {
+                            // Transition from thinking to response
+                            if ($thinking && thinkingStartTime) {
+                                this.finalizeThinking($thinking, Date.now() - thinkingStartTime);
+                                $reply = this.startReply();
+                                $thinking = null;
+                            }
                             textContent += delta.content;
                             this.updateReply($reply, textContent);
                         }
@@ -495,6 +541,12 @@
                                 }
                             });
                         }
+                    }
+
+                    // Finalize thinking if stream ended during thinking phase
+                    if ($thinking && thinkingStartTime) {
+                        this.finalizeThinking($thinking, Date.now() - thinkingStartTime);
+                        $reply = this.startReply();
                     }
                 }
 

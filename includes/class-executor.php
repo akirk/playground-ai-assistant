@@ -49,16 +49,16 @@ class Executor {
             case 'write_file':
                 $path = $this->get_string_arg($arguments, 'path', $tool_name);
                 $content = $this->get_content_arg($arguments, 'content', $tool_name);
-                $reason = $this->get_string_arg($arguments, 'reason', $tool_name);
+                $reason = $this->get_string_arg($arguments, 'reason', $tool_name, '');
                 return $this->write_file($path, $content, $reason, $conversation_id);
             case 'edit_file':
                 $path = $this->get_string_arg($arguments, 'path', $tool_name);
                 $edits = $this->get_edits_arg($arguments);
-                $reason = $this->get_string_arg($arguments, 'reason', $tool_name);
+                $reason = $this->get_string_arg($arguments, 'reason', $tool_name, '');
                 return $this->edit_file($path, $edits, $reason, $conversation_id);
             case 'delete_file':
                 $path = $this->get_string_arg($arguments, 'path', $tool_name);
-                $reason = $this->get_string_arg($arguments, 'reason', $tool_name);
+                $reason = $this->get_string_arg($arguments, 'reason', $tool_name, '');
                 return $this->delete_file($path, $reason, $conversation_id);
             case 'list_directory':
                 return $this->list_directory($this->get_string_arg($arguments, 'path', $tool_name));
