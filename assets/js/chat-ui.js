@@ -594,8 +594,8 @@
                     $status.text('Waiting for approval');
                     $spinner.hide();
                     $actions.html(
-                        '<button class="button button-primary button-small ai-tool-approve" data-tool-id="' + toolId + '">Approve</button>' +
-                        '<button class="button button-small ai-tool-skip" data-tool-id="' + toolId + '">Skip</button>'
+                        '<button class="button button-primary button-small ai-tool-approve ai-approve-btn" data-tool-id="' + toolId + '">Approve</button>' +
+                        '<button class="button button-small ai-tool-skip ai-skip-btn" data-tool-id="' + toolId + '">Skip</button>'
                     );
                     break;
                 case 'executing':
@@ -608,6 +608,30 @@
                     $spinner.hide();
                     $actions.empty();
                     $card.find('.ai-tool-card-size').hide();
+                    // Show output if provided
+                    if (options.output) {
+                        var $output = $card.find('.ai-tool-output');
+                        if ($output.length === 0) {
+                            $output = $('<div class="ai-tool-output"></div>');
+                            $card.find('.ai-tool-card-content').append($output);
+                        }
+                        var outputText = '';
+                        if (options.output.output) {
+                            outputText += options.output.output;
+                        }
+                        if (options.output.result !== undefined && options.output.result !== null) {
+                            var resultStr = typeof options.output.result === 'string'
+                                ? options.output.result
+                                : JSON.stringify(options.output.result, null, 2);
+                            if (outputText) outputText += '\n';
+                            outputText += resultStr;
+                        }
+                        if (outputText.trim()) {
+                            $output.html('<pre class="ai-tool-output-content"></pre>');
+                            $output.find('pre').text(outputText);
+                            $output.show();
+                        }
+                    }
                     // Move completed card out of the tool-cards container so it persists
                     var $container = $('#ai-assistant-tool-cards');
                     if ($card.parent().is($container)) {

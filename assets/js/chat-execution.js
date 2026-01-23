@@ -96,7 +96,7 @@
             Promise.all(promises).then(function(results) {
                 results.forEach(function(result) {
                     if (result.success) {
-                        self.setToolCardState(result.id, 'completed');
+                        self.setToolCardState(result.id, 'completed', { output: result.result });
                     } else {
                         var errorMsg = result.result?.error || 'Failed';
                         self.setToolCardState(result.id, 'error', { message: errorMsg });
@@ -444,7 +444,7 @@
                 this.executeSingleTool({ id: toolId, name: toolName, arguments: toolArgs }).then(function(result) {
                     self.executingToolCount--;
                     if (result.success) {
-                        self.setToolCardState(result.id, 'completed');
+                        self.setToolCardState(result.id, 'completed', { output: result.result });
                     } else {
                         self.setToolCardState(result.id, 'error', { message: result.result?.error || 'Failed' });
                     }
@@ -552,7 +552,7 @@
                 this.setToolCardState(actionId, 'executing');
                 this.executeSingleTool(action).then(function(result) {
                     if (result.success) {
-                        self.setToolCardState(result.id, 'completed');
+                        self.setToolCardState(result.id, 'completed', { output: result.result });
                     } else {
                         var errorMsg = result.result?.error || 'Failed';
                         self.setToolCardState(result.id, 'error', { message: errorMsg });
@@ -590,7 +590,7 @@
                 Promise.all(promises).then(function(results) {
                     results.forEach(function(result) {
                         if (result.success) {
-                            self.setToolCardState(result.id, 'completed');
+                            self.setToolCardState(result.id, 'completed', { output: result.result });
                         } else {
                             var errorMsg = result.result?.error || 'Failed';
                             self.setToolCardState(result.id, 'error', { message: errorMsg });
@@ -664,9 +664,9 @@
                 $header = $('<div id="ai-assistant-pending-actions-header">' +
                     '<span>' + (aiAssistantConfig.strings?.bulkConfirmTitle || 'Approve Actions') + '</span>' +
                     '<div class="ai-pending-bulk-actions">' +
-                    '<button id="ai-confirm-all" class="button button-primary button-small">' +
+                    '<button id="ai-confirm-all" class="button button-primary button-small ai-approve-btn">' +
                     (aiAssistantConfig.strings?.approveAll || 'Approve All') + '</button>' +
-                    '<button id="ai-skip-all" class="button button-small">' +
+                    '<button id="ai-skip-all" class="button button-small ai-skip-btn">' +
                     (aiAssistantConfig.strings?.skipAll || 'Skip All') + '</button>' +
                     '</div></div>');
                 $container.prepend($header);

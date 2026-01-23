@@ -53,7 +53,7 @@ class Executor {
                 return $this->write_file($path, $content, $reason, $conversation_id);
             case 'edit_file':
                 $path = $this->get_string_arg($arguments, 'path', $tool_name);
-                $edits = $this->get_array_arg($arguments, 'edits', $tool_name);
+                $edits = $this->get_edits_arg($arguments);
                 $reason = $this->get_string_arg($arguments, 'reason', $tool_name);
                 return $this->edit_file($path, $edits, $reason, $conversation_id);
             case 'delete_file':
@@ -144,6 +144,36 @@ class Executor {
             throw new \Exception("$tool '$name' must be an array");
         }
         return $value;
+    }
+
+    private function get_edits_arg(array $args): array {
+        if (!isset($args['edits'])) {
+            throw new \Exception("edit_file requires 'edits' argument");
+        }
+
+        $edits = $args['edits'];
+
+        // If it's a single edit object with search/replace, wrap in array
+        if (is_array($edits) && isset($edits['search']) && isset($edits['replace'])) {
+            return [$edits];
+        }
+
+        // If it's already a proper array of edits, return it
+        if (is_array($edits) && isset($edits[0]) && is_array($edits[0])) {
+            return $edits;
+        }
+
+        // If it's an array but not in the right format, provide helpful error
+        if (is_array($edits)) {
+            $keys = array_keys($edits);
+            $preview = json_encode(array_slice($edits, 0, 2), JSON_PRETTY_PRINT);
+            throw new \Exception("edit_file 'edits' must be an array of {search, replace} objects. Received keys: " . implode(', ', array_slice($keys, 0, 5)) . ". Preview: $preview");
+        }
+
+        // Not an array at all
+        $type = gettype($edits);
+        $preview = is_string($edits) ? substr($edits, 0, 100) . '...' : '';
+        throw new \Exception("edit_file 'edits' must be an array, got $type. $preview");
     }
 
     // ===== FILE OPERATIONS =====

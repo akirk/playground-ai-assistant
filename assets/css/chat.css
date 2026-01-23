@@ -542,6 +542,42 @@
     display: none;
 }
 
+/* Button styles for frontend (where WP admin CSS isn't loaded) */
+.ai-tool-card-actions button {
+    display: inline-block;
+    padding: 4px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    font-weight: 500;
+    border-radius: 3px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.ai-tool-card-actions .ai-approve-btn {
+    background: #2271b1;
+    border: 1px solid #2271b1;
+    color: #fff;
+}
+
+.ai-tool-card-actions .ai-approve-btn:hover {
+    background: #135e96;
+    border-color: #135e96;
+}
+
+.ai-tool-card-actions .ai-skip-btn {
+    background: #f6f7f7;
+    border: 1px solid #c3c4c7;
+    color: #50575e;
+}
+
+.ai-tool-card-actions .ai-skip-btn:hover {
+    background: #f0f0f1;
+    border-color: #8c8f94;
+    color: #1d2327;
+}
+
 /* State: Generating */
 .ai-tool-card-generating {
     background: #f0f6fc;
@@ -576,6 +612,28 @@
 
 .ai-tool-card-completed .ai-tool-card-status {
     color: #46b450;
+}
+
+/* Tool output display */
+.ai-tool-output {
+    margin-top: 8px;
+    padding-left: 22px;
+}
+
+.ai-tool-output-content {
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    border-radius: 3px;
+    padding: 8px 10px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 150px;
+    overflow: auto;
+    margin: 0;
+    color: #1d2327;
 }
 
 /* State: Error */
@@ -858,6 +916,48 @@
     resize: none;
     min-height: 20px;
     max-height: 60px;
+}
+
+/* Button styles for frontend (where WP admin CSS isn't loaded) */
+#ai-assistant-send,
+#ai-assistant-stop {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+}
+
+#ai-assistant-send {
+    background: #2271b1;
+    border: 1px solid #2271b1;
+    color: #fff;
+}
+
+#ai-assistant-send:hover:not(:disabled) {
+    background: #135e96;
+    border-color: #135e96;
+}
+
+#ai-assistant-send:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+#ai-assistant-stop {
+    background: #f6f7f7;
+    border: 1px solid #c3c4c7;
+    color: #50575e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#ai-assistant-stop:hover {
+    background: #f0f0f1;
+    border-color: #8c8f94;
+    color: #1d2327;
 }
 
 #ai-assistant-input:focus {
