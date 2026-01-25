@@ -7,12 +7,12 @@ if (!defined('ABSPATH')) {
 
 class Changes_Admin {
 
-    private $git_tracker;
+    private $git_tracker_manager;
     private $executor;
 
-    public function __construct(Git_Tracker $git_tracker) {
-        $this->git_tracker = $git_tracker;
-        $this->executor = new Executor(new Tools(), $git_tracker);
+    public function __construct(Git_Tracker_Manager $git_tracker_manager) {
+        $this->git_tracker_manager = $git_tracker_manager;
+        $this->executor = new Executor(new Tools(), $git_tracker_manager);
         add_action('admin_menu', [$this, 'add_admin_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
         add_action('load-tools_page_ai-changes', [$this, 'add_help_tabs']);
@@ -173,7 +173,7 @@ class Changes_Admin {
     }
 
     public function render_page(): void {
-        $plugins = $this->git_tracker->get_changes_by_plugin();
+        $plugins = $this->git_tracker_manager->get_all_changes_by_plugin();
         $has_changes = !empty($plugins);
         ?>
         <div class="wrap ai-changes-wrap">
@@ -340,7 +340,7 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $directories = $this->git_tracker->get_changes_by_directory();
+        $directories = $this->git_tracker_manager->get_all_changes_by_directory();
         wp_send_json_success(['directories' => $directories]);
     }
 
@@ -351,7 +351,7 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
-        $plugins = $this->git_tracker->get_changes_by_plugin();
+        $plugins = $this->git_tracker_manager->get_all_changes_by_plugin();
         wp_send_json_success(['plugins' => $plugins]);
     }
 
@@ -368,7 +368,7 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'No files selected']);
         }
 
-        $diff = $this->git_tracker->generate_diff($file_paths);
+        $diff = $this->git_tracker_manager->generate_diff($file_paths);
         wp_send_json_success(['diff' => $diff]);
     }
 
@@ -382,9 +382,9 @@ class Changes_Admin {
         $file_paths = isset($_POST['file_paths']) ? array_map('sanitize_text_field', (array) $_POST['file_paths']) : [];
 
         if (empty($file_paths)) {
-            $deleted = $this->git_tracker->clear_all();
+            $deleted = $this->git_tracker_manager->clear_all();
         } else {
-            $deleted = $this->git_tracker->clear_files($file_paths);
+            $deleted = $this->git_tracker_manager->clear_files($file_paths);
         }
 
         wp_send_json_success([
@@ -446,12 +446,12 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'No file specified']);
         }
 
-        if ($this->git_tracker->is_reverted($file_path)) {
+        if ($this->git_tracker_manager->is_reverted($file_path)) {
             wp_send_json_error(['message' => 'File already reverted']);
         }
 
         try {
-            if ($this->git_tracker->revert_file($file_path)) {
+            if ($this->git_tracker_manager->revert_file($file_path)) {
                 wp_send_json_success([
                     'message' => __('File reverted successfully.', 'ai-assistant'),
                 ]);
@@ -476,12 +476,12 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'No file specified']);
         }
 
-        if (!$this->git_tracker->is_reverted($file_path)) {
+        if (!$this->git_tracker_manager->is_reverted($file_path)) {
             wp_send_json_error(['message' => 'File is not reverted']);
         }
 
         try {
-            if ($this->git_tracker->reapply_file($file_path)) {
+            if ($this->git_tracker_manager->reapply_file($file_path)) {
                 wp_send_json_success([
                     'message' => __('File changes reapplied successfully.', 'ai-assistant'),
                 ]);
@@ -510,12 +510,12 @@ class Changes_Admin {
         $errors = [];
 
         foreach ($file_paths as $file_path) {
-            if ($this->git_tracker->is_reverted($file_path)) {
+            if ($this->git_tracker_manager->is_reverted($file_path)) {
                 continue;
             }
 
             try {
-                if ($this->git_tracker->revert_file($file_path)) {
+                if ($this->git_tracker_manager->revert_file($file_path)) {
                     $reverted[] = $file_path;
                 } else {
                     $errors[] = sprintf(__('Failed to revert: %s', 'ai-assistant'), $file_path);
@@ -612,10 +612,15 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
+        $plugin_path = isset($_POST['plugin_path']) ? sanitize_text_field($_POST['plugin_path']) : '';
         $limit = isset($_POST['limit']) ? (int) $_POST['limit'] : 20;
         $offset = isset($_POST['offset']) ? (int) $_POST['offset'] : 0;
 
-        $result = $this->git_tracker->get_commit_log($limit, $offset);
+        if (empty($plugin_path)) {
+            wp_send_json_error(['message' => 'No plugin path specified']);
+        }
+
+        $result = $this->git_tracker_manager->get_commit_log($plugin_path, $limit, $offset);
         wp_send_json_success($result);
     }
 
@@ -626,13 +631,18 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
+        $plugin_path = isset($_POST['plugin_path']) ? sanitize_text_field($_POST['plugin_path']) : '';
         $sha = isset($_POST['sha']) ? sanitize_text_field($_POST['sha']) : '';
+
+        if (empty($plugin_path)) {
+            wp_send_json_error(['message' => 'No plugin path specified']);
+        }
 
         if (empty($sha)) {
             wp_send_json_error(['message' => 'No commit SHA specified']);
         }
 
-        $diff = $this->git_tracker->get_commit_diff($sha);
+        $diff = $this->git_tracker_manager->get_commit_diff($plugin_path, $sha);
         wp_send_json_success(['diff' => $diff]);
     }
 
@@ -643,13 +653,18 @@ class Changes_Admin {
             wp_send_json_error(['message' => 'Permission denied']);
         }
 
+        $plugin_path = isset($_POST['plugin_path']) ? sanitize_text_field($_POST['plugin_path']) : '';
         $sha = isset($_POST['sha']) ? sanitize_text_field($_POST['sha']) : '';
+
+        if (empty($plugin_path)) {
+            wp_send_json_error(['message' => 'No plugin path specified']);
+        }
 
         if (empty($sha)) {
             wp_send_json_error(['message' => 'No commit SHA specified']);
         }
 
-        $result = $this->git_tracker->revert_to_commit($sha);
+        $result = $this->git_tracker_manager->revert_to_commit($plugin_path, $sha);
 
         if ($result['success']) {
             wp_send_json_success([
@@ -827,7 +842,7 @@ class Changes_Admin {
             wp_die(__('No files selected.', 'ai-assistant'));
         }
 
-        $diff = $this->git_tracker->generate_diff($file_paths);
+        $diff = $this->git_tracker_manager->generate_diff($file_paths);
         $filename = 'ai-changes-' . date('Y-m-d-His') . '.patch';
 
         header('Content-Type: text/plain');

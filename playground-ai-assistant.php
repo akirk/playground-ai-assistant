@@ -73,7 +73,7 @@ final class AI_Assistant {
     private $tools;
     private $executor;
     private $conversations;
-    private $git_tracker;
+    private $git_tracker_manager;
     private $plugin_downloads;
     private $changes_admin;
 
@@ -101,13 +101,13 @@ final class AI_Assistant {
         // Initialize components
         $this->settings = new AI_Assistant\Settings();
         $this->tools = new AI_Assistant\Tools();
-        $this->git_tracker = new AI_Assistant\Git_Tracker();
-        $this->executor = new AI_Assistant\Executor($this->tools, $this->git_tracker);
+        $this->git_tracker_manager = new AI_Assistant\Git_Tracker_Manager();
+        $this->executor = new AI_Assistant\Executor($this->tools, $this->git_tracker_manager);
         $this->conversations = new AI_Assistant\Conversations();
         $this->chat_ui = new AI_Assistant\Chat_UI();
         $this->api_handler = new AI_Assistant\API_Handler($this->tools, $this->executor);
-        $this->plugin_downloads = new AI_Assistant\Plugin_Downloads($this->git_tracker);
-        $this->changes_admin = new AI_Assistant\Changes_Admin($this->git_tracker);
+        $this->plugin_downloads = new AI_Assistant\Plugin_Downloads($this->git_tracker_manager);
+        $this->changes_admin = new AI_Assistant\Changes_Admin($this->git_tracker_manager);
     }
 
     /**

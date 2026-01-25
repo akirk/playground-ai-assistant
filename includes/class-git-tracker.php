@@ -16,10 +16,31 @@ class Git_Tracker {
 
     private string $git_dir;
     private string $work_tree;
+    private bool $existing_git;
 
-    public function __construct() {
-        $this->work_tree = WP_CONTENT_DIR;
-        $this->git_dir = WP_CONTENT_DIR . '/.git';
+    /**
+     * Create a Git_Tracker for a specific directory.
+     *
+     * @param string $work_tree The root directory to track (e.g., plugin or theme directory)
+     */
+    public function __construct(string $work_tree) {
+        $this->work_tree = rtrim($work_tree, '/');
+        $this->git_dir = $this->work_tree . '/.git';
+        $this->existing_git = is_dir($this->git_dir);
+    }
+
+    /**
+     * Check if this tracker is using an existing .git directory (e.g., from Playground fetch).
+     */
+    public function has_existing_git(): bool {
+        return $this->existing_git;
+    }
+
+    /**
+     * Get the work tree path.
+     */
+    public function get_work_tree(): string {
+        return $this->work_tree;
     }
 
     /**
@@ -64,7 +85,7 @@ class Git_Tracker {
     }
 
     /**
-     * Get all tracked changes grouped by directory.
+     * Get all tracked changes grouped by subdirectory.
      */
     public function get_changes_by_directory(): array {
         if (!$this->is_active()) {
@@ -77,167 +98,134 @@ class Git_Tracker {
 
         // Process modified/deleted files from index
         foreach ($entries as $path => $info) {
+            if (empty($path) || strlen($path) < 1 || strpos($path, "\0") !== false) {
+                continue;
+            }
             $full_path = $this->work_tree . '/' . $path;
             $exists = file_exists($full_path);
-
             $change_type = $exists ? 'modified' : 'deleted';
-            $this->add_to_directory_list($directories, $path, $change_type, $info);
+
+            $dir = dirname($path);
+            if ($dir === '.') {
+                $dir = '';
+            }
+
+            if (!isset($directories[$dir])) {
+                $directories[$dir] = [
+                    'path' => $dir,
+                    'files' => [],
+                    'count' => 0,
+                ];
+            }
+
+            $directories[$dir]['files'][] = [
+                'id' => md5($path),
+                'path' => $path,
+                'relative_path' => basename($path),
+                'change_type' => $change_type,
+                'sha' => $info['sha'] ?? null,
+                'is_reverted' => $this->is_reverted($path),
+            ];
+            $directories[$dir]['count']++;
         }
 
         // Process created files
         foreach ($created as $path) {
-            $this->add_to_directory_list($directories, $path, 'created', ['sha' => null, 'size' => 0]);
+            if (empty($path) || strlen($path) < 1 || strpos($path, "\0") !== false) {
+                continue;
+            }
+
+            $dir = dirname($path);
+            if ($dir === '.') {
+                $dir = '';
+            }
+
+            if (!isset($directories[$dir])) {
+                $directories[$dir] = [
+                    'path' => $dir,
+                    'files' => [],
+                    'count' => 0,
+                ];
+            }
+
+            $directories[$dir]['files'][] = [
+                'id' => md5($path),
+                'path' => $path,
+                'relative_path' => basename($path),
+                'change_type' => 'created',
+                'sha' => null,
+                'is_reverted' => $this->is_reverted($path),
+            ];
+            $directories[$dir]['count']++;
         }
 
         return $directories;
     }
 
-    private function add_to_directory_list(array &$directories, string $path, string $change_type, array $info): void {
-        // Skip invalid/corrupted paths
-        if (empty($path) || strlen($path) < 3 || strpos($path, "\0") !== false) {
-            return;
-        }
-
-        $parts = explode('/', $path);
-        $dir = count($parts) >= 2 ? $parts[0] . '/' . $parts[1] : $parts[0];
-
-        if (!isset($directories[$dir])) {
-            $directories[$dir] = [
-                'path' => $dir,
-                'files' => [],
-                'count' => 0,
-            ];
-        }
-
-        $directories[$dir]['files'][] = [
-            'id' => md5($path), // Use hash as ID
-            'path' => $path,
-            'relative_path' => substr($path, strlen($dir) + 1),
-            'change_type' => $change_type,
-            'sha' => $info['sha'] ?? null,
-            'is_reverted' => $this->is_reverted($path),
-        ];
-        $directories[$dir]['count']++;
-    }
-
     /**
-     * Get all tracked changes grouped by plugin/theme.
-     * Returns structure suitable for plugin-first UI display.
+     * Get all tracked changes for this plugin/theme.
+     * Returns structure suitable for UI display.
      */
-    public function get_changes_by_plugin(): array {
+    public function get_changes_info(): array {
         if (!$this->is_active()) {
             return [];
         }
 
         $entries = $this->read_index();
         $created = $this->get_created_files();
-        $plugins = [];
+        $files = [];
 
         // Process modified/deleted files from index
         foreach ($entries as $path => $info) {
+            if (empty($path) || strlen($path) < 1 || strpos($path, "\0") !== false) {
+                continue;
+            }
             $full_path = $this->work_tree . '/' . $path;
             $exists = file_exists($full_path);
             $change_type = $exists ? 'modified' : 'deleted';
-            $this->add_to_plugin_list($plugins, $path, $change_type, $info);
+
+            $files[] = [
+                'id' => md5($path),
+                'path' => $path,
+                'relative_path' => $path,
+                'change_type' => $change_type,
+                'sha' => $info['sha'] ?? null,
+                'is_reverted' => $this->is_reverted($path),
+            ];
         }
 
         // Process created files
         foreach ($created as $path) {
-            $this->add_to_plugin_list($plugins, $path, 'created', ['sha' => null, 'size' => 0]);
-        }
-
-        // Get commits for each plugin
-        foreach ($plugins as $plugin_path => &$plugin_data) {
-            $plugin_data['commits'] = $this->get_commits_for_plugin($plugin_path);
-            $plugin_data['commit_count'] = count($plugin_data['commits']);
-        }
-
-        return $plugins;
-    }
-
-    private function add_to_plugin_list(array &$plugins, string $path, string $change_type, array $info): void {
-        if (empty($path) || strlen($path) < 3 || strpos($path, "\0") !== false) {
-            return;
-        }
-
-        $parts = explode('/', $path);
-        $plugin_path = count($parts) >= 2 ? $parts[0] . '/' . $parts[1] : $parts[0];
-
-        // Determine plugin name from path
-        $plugin_name = $this->get_plugin_name($plugin_path);
-
-        if (!isset($plugins[$plugin_path])) {
-            $plugins[$plugin_path] = [
-                'path' => $plugin_path,
-                'name' => $plugin_name,
-                'files' => [],
-                'file_count' => 0,
-                'commits' => [],
-                'commit_count' => 0,
+            if (empty($path) || strlen($path) < 1 || strpos($path, "\0") !== false) {
+                continue;
+            }
+            $files[] = [
+                'id' => md5($path),
+                'path' => $path,
+                'relative_path' => $path,
+                'change_type' => 'created',
+                'sha' => null,
+                'is_reverted' => $this->is_reverted($path),
             ];
         }
 
-        $plugins[$plugin_path]['files'][] = [
-            'id' => md5($path),
-            'path' => $path,
-            'relative_path' => substr($path, strlen($plugin_path) + 1),
-            'change_type' => $change_type,
-            'sha' => $info['sha'] ?? null,
-            'is_reverted' => $this->is_reverted($path),
+        $commits = $this->get_recent_commits();
+
+        return [
+            'path' => basename($this->work_tree),
+            'name' => $this->get_name(),
+            'work_tree' => $this->work_tree,
+            'files' => $files,
+            'file_count' => count($files),
+            'commits' => $commits,
+            'commit_count' => count($commits),
         ];
-        $plugins[$plugin_path]['file_count']++;
     }
 
     /**
-     * Get plugin or theme name from path, reading header if available.
+     * Get recent commits from ai-changes branch.
      */
-    private function get_plugin_name(string $plugin_path): string {
-        $parts = explode('/', $plugin_path);
-        $fallback_name = ucwords(str_replace(['-', '_'], ' ', end($parts)));
-
-        if (count($parts) < 2) {
-            return $fallback_name;
-        }
-
-        $type = $parts[0];
-        $dir_name = $parts[1];
-
-        if ($type === 'themes') {
-            $style_file = WP_CONTENT_DIR . '/themes/' . $dir_name . '/style.css';
-            if (file_exists($style_file)) {
-                $content = file_get_contents($style_file, false, null, 0, 8192);
-                if (preg_match('/^\s*Theme Name:\s*(.+)$/mi', $content, $matches)) {
-                    return trim($matches[1]);
-                }
-            }
-            return $fallback_name;
-        }
-
-        if ($type === 'plugins') {
-            $main_file = WP_CONTENT_DIR . '/plugins/' . $dir_name . '/' . $dir_name . '.php';
-
-            if (!file_exists($main_file)) {
-                $files = glob(WP_CONTENT_DIR . '/plugins/' . $dir_name . '/*.php');
-                if (!empty($files)) {
-                    $main_file = $files[0];
-                }
-            }
-
-            if (file_exists($main_file)) {
-                $content = file_get_contents($main_file, false, null, 0, 8192);
-                if (preg_match('/^\s*\*?\s*Plugin Name:\s*(.+)$/mi', $content, $matches)) {
-                    return trim($matches[1]);
-                }
-            }
-        }
-
-        return $fallback_name;
-    }
-
-    /**
-     * Get commits from ai-changes branch that affect files in a specific plugin prefix.
-     */
-    public function get_commits_for_plugin(string $plugin_prefix, int $limit = 20, int $offset = 0): array {
+    public function get_recent_commits(int $limit = 20): array {
         if (!$this->is_active()) {
             return [];
         }
@@ -247,19 +235,16 @@ class Git_Tracker {
             return [];
         }
 
-        $plugin_prefix = rtrim($plugin_prefix, '/') . '/';
         $commits = [];
         $sha = trim(file_get_contents($ref_path));
-        $skipped = 0;
 
-        while ($sha && count($commits) < $limit + 1) {
+        while ($sha && count($commits) < $limit) {
             $commit_data = $this->read_object($sha);
             if ($commit_data === null || $commit_data['type'] !== 'commit') {
                 break;
             }
 
             $content = $commit_data['content'];
-
             $tree = null;
             $parent = null;
             $timestamp = null;
@@ -284,42 +269,58 @@ class Git_Tracker {
                 }
             }
 
-            // Check if this commit affects files in the plugin prefix
-            $affected_files = $this->get_commit_affected_files($sha, $parent);
-            $plugin_files = array_filter($affected_files, function($file) use ($plugin_prefix) {
-                return strpos($file, $plugin_prefix) === 0;
-            });
-
-            if (!empty($plugin_files)) {
-                if ($skipped < $offset) {
-                    $skipped++;
-                    $sha = $parent;
-                    continue;
-                }
-
-                $metadata = $this->parse_commit_metadata(trim($message));
-                $commits[] = [
-                    'sha' => $sha,
-                    'short_sha' => substr($sha, 0, 7),
-                    'tree' => $tree,
-                    'parent' => $parent,
-                    'message' => $metadata['reason'],
-                    'conversation_id' => $metadata['conversation_id'],
-                    'timestamp' => $timestamp,
-                    'date' => $timestamp ? date('Y-m-d H:i:s', $timestamp) : null,
-                    'files_affected' => count($plugin_files),
-                ];
-            }
+            $metadata = $this->parse_commit_metadata(trim($message));
+            $commits[] = [
+                'sha' => $sha,
+                'short_sha' => substr($sha, 0, 7),
+                'tree' => $tree,
+                'parent' => $parent,
+                'message' => $metadata['reason'],
+                'conversation_id' => $metadata['conversation_id'],
+                'timestamp' => $timestamp,
+                'date' => $timestamp ? date('Y-m-d H:i:s', $timestamp) : null,
+            ];
 
             $sha = $parent;
         }
 
-        $has_more = count($commits) > $limit;
-        if ($has_more) {
-            array_pop($commits);
+        return $commits;
+    }
+
+    /**
+     * Get the name of the plugin/theme this tracker manages.
+     * Reads from plugin/theme headers if available.
+     */
+    public function get_name(): string {
+        $dir_name = basename($this->work_tree);
+        $fallback_name = ucwords(str_replace(['-', '_'], ' ', $dir_name));
+
+        // Check if it's a theme (has style.css with Theme Name)
+        $style_file = $this->work_tree . '/style.css';
+        if (file_exists($style_file)) {
+            $content = file_get_contents($style_file, false, null, 0, 8192);
+            if (preg_match('/^\s*Theme Name:\s*(.+)$/mi', $content, $matches)) {
+                return trim($matches[1]);
+            }
         }
 
-        return $commits;
+        // Check if it's a plugin (has Plugin Name header)
+        $main_file = $this->work_tree . '/' . $dir_name . '.php';
+        if (!file_exists($main_file)) {
+            $files = glob($this->work_tree . '/*.php');
+            if (!empty($files)) {
+                $main_file = $files[0];
+            }
+        }
+
+        if (file_exists($main_file)) {
+            $content = file_get_contents($main_file, false, null, 0, 8192);
+            if (preg_match('/^\s*\*?\s*Plugin Name:\s*(.+)$/mi', $content, $matches)) {
+                return trim($matches[1]);
+            }
+        }
+
+        return $fallback_name;
     }
 
     /**
@@ -588,14 +589,22 @@ class Git_Tracker {
     }
 
     /**
-     * Check if tracking is active.
+     * Check if tracking is active (has .git directory).
      */
     public function is_active(): bool {
         return is_dir($this->git_dir);
     }
 
     /**
-     * Build a standalone .git directory for a subset of files (e.g., a single plugin).
+     * Check if this tracker has AI changes (ai-changes branch exists).
+     * This distinguishes between a .git from Playground fetch vs one with actual modifications.
+     */
+    public function has_ai_changes(): bool {
+        return file_exists($this->git_dir . '/refs/heads/ai-changes');
+    }
+
+    /**
+     * Build a standalone .git directory for export.
      * The returned .git can be included in a ZIP so users can run `git diff main` after extraction.
      *
      * Structure mirrors the main tracker:
@@ -603,38 +612,30 @@ class Git_Tracker {
      * - ai-changes branch: current files (after AI modifications)
      * - HEAD points to ai-changes
      *
-     * @param string $path_prefix Files to include (e.g., "plugins/my-plugin/")
      * @param string $target_dir  Directory to create .git in (will create $target_dir/.git)
      * @return bool True if .git was created with tracked changes
      */
-    public function build_standalone_git(string $path_prefix, string $target_dir): bool {
+    public function build_standalone_git(string $target_dir): bool {
         if (!$this->is_active()) {
             return false;
         }
 
-        $path_prefix = rtrim($path_prefix, '/') . '/';
         $entries = $this->read_index();
         $created = $this->get_created_files();
 
         $plugin_files = [];
         foreach ($entries as $path => $info) {
-            if (strpos($path, $path_prefix) === 0) {
-                $relative = substr($path, strlen($path_prefix));
-                $plugin_files[$relative] = [
-                    'sha' => $info['sha'],
-                    'type' => 'modified',
-                ];
-            }
+            $plugin_files[$path] = [
+                'sha' => $info['sha'],
+                'type' => 'modified',
+            ];
         }
 
         foreach ($created as $path) {
-            if (strpos($path, $path_prefix) === 0) {
-                $relative = substr($path, strlen($path_prefix));
-                $plugin_files[$relative] = [
-                    'sha' => null,
-                    'type' => 'created',
-                ];
-            }
+            $plugin_files[$path] = [
+                'sha' => null,
+                'type' => 'created',
+            ];
         }
 
         if (empty($plugin_files)) {
@@ -642,7 +643,6 @@ class Git_Tracker {
         }
 
         $git_dir = rtrim($target_dir, '/') . '/.git';
-        $plugin_path = WP_PLUGIN_DIR . '/' . rtrim(substr($path_prefix, strlen('plugins/')), '/');
 
         mkdir($git_dir, 0755, true);
         mkdir($git_dir . '/objects', 0755);
@@ -671,14 +671,14 @@ class Git_Tracker {
         $main_commit_sha = $this->write_commit_to_dir($git_dir, $main_tree_sha, null, "Original state before AI modifications");
         file_put_contents($git_dir . '/refs/heads/main', $main_commit_sha . "\n");
 
-        // Recreate commit history from ai-changes branch for this plugin
-        $commits = $this->get_commits_for_prefix($path_prefix);
+        // Recreate commit history from ai-changes branch
+        $commits = $this->get_all_commits();
 
         if (empty($commits)) {
             // Fallback: single commit with current content
             $current_tree_files = [];
             foreach ($plugin_files as $relative_path => $info) {
-                $full_path = $plugin_path . '/' . $relative_path;
+                $full_path = $this->work_tree . '/' . $relative_path;
                 if (file_exists($full_path)) {
                     $content = file_get_contents($full_path);
                     $current_tree_files[$relative_path] = $this->write_blob_to_dir($git_dir, $content);
@@ -717,7 +717,7 @@ class Git_Tracker {
         // Build index from current working directory
         $index_entries = [];
         foreach ($plugin_files as $relative_path => $info) {
-            $full_path = $plugin_path . '/' . $relative_path;
+            $full_path = $this->work_tree . '/' . $relative_path;
             if (file_exists($full_path)) {
                 $content = file_get_contents($full_path);
                 $index_entries[$relative_path] = [
@@ -730,6 +730,70 @@ class Git_Tracker {
         $this->write_index_to_dir($git_dir, $index_entries);
 
         return true;
+    }
+
+    /**
+     * Get all commits from ai-changes branch with their file contents.
+     */
+    private function get_all_commits(): array {
+        $ref_path = $this->git_dir . '/refs/heads/ai-changes';
+        if (!file_exists($ref_path)) {
+            return [];
+        }
+
+        $commits = [];
+        $commit_sha = trim(file_get_contents($ref_path));
+
+        while ($commit_sha) {
+            $commit_data = $this->read_object($commit_sha);
+            if ($commit_data === null || $commit_data['type'] !== 'commit') {
+                break;
+            }
+
+            $parts = explode("\n\n", $commit_data['content'], 2);
+            $message = isset($parts[1]) ? trim($parts[1]) : '';
+
+            if (!preg_match('/^tree ([a-f0-9]{40})/m', $commit_data['content'], $matches)) {
+                break;
+            }
+            $tree_sha = $matches[1];
+
+            $parent_sha = null;
+            if (preg_match('/^parent ([a-f0-9]{40})/m', $commit_data['content'], $matches)) {
+                $parent_sha = $matches[1];
+            }
+
+            // Get files from this commit's tree
+            $files = $this->get_all_files_from_tree_with_content($tree_sha);
+
+            if ($message) {
+                $commits[] = [
+                    'message' => $message,
+                    'files' => $files,
+                ];
+            }
+
+            $commit_sha = $parent_sha;
+        }
+
+        return array_reverse($commits);
+    }
+
+    /**
+     * Recursively get all files from a tree with their contents.
+     */
+    private function get_all_files_from_tree_with_content(string $tree_sha): array {
+        $file_shas = $this->get_all_files_from_tree($tree_sha, '');
+        $result = [];
+
+        foreach ($file_shas as $path => $sha) {
+            $content = $this->read_blob($sha);
+            if ($content !== null) {
+                $result[$path] = $content;
+            }
+        }
+
+        return $result;
     }
 
     private function write_blob_to_dir(string $git_dir, string $content): string {
@@ -1138,14 +1202,14 @@ class Git_Tracker {
     }
 
     private function to_relative_path(string $path): ?string {
-        // Already relative
-        if (strpos($path, '/') !== 0 && strpos($path, WP_CONTENT_DIR) !== 0) {
+        // Already relative (doesn't start with /)
+        if (strpos($path, '/') !== 0) {
             return $path;
         }
 
         // Convert absolute to relative
-        if (strpos($path, WP_CONTENT_DIR) === 0) {
-            return ltrim(substr($path, strlen(WP_CONTENT_DIR)), '/');
+        if (strpos($path, $this->work_tree) === 0) {
+            return ltrim(substr($path, strlen($this->work_tree)), '/');
         }
 
         return null;

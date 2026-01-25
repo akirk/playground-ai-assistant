@@ -10,10 +10,10 @@ if (!defined('ABSPATH')) {
  */
 class Plugin_Downloads {
 
-    private $git_tracker;
+    private $git_tracker_manager;
 
-    public function __construct(Git_Tracker $git_tracker) {
-        $this->git_tracker = $git_tracker;
+    public function __construct(Git_Tracker_Manager $git_tracker_manager) {
+        $this->git_tracker_manager = $git_tracker_manager;
         add_filter('plugin_action_links', [$this, 'add_download_link'], 10, 4);
         add_action('admin_action_ai_assistant_download_plugin', [$this, 'handle_download']);
     }
@@ -22,14 +22,10 @@ class Plugin_Downloads {
      * Check if a plugin has been modified via git tracking
      */
     private function is_plugin_modified(string $plugin_folder): bool {
-        if (!$this->git_tracker->is_active()) {
-            return false;
-        }
-
-        $changes = $this->git_tracker->get_changes_by_directory();
         $plugin_path = 'plugins/' . $plugin_folder;
+        $plugins = $this->git_tracker_manager->get_all_changes_by_plugin();
 
-        return isset($changes[$plugin_path]) && $changes[$plugin_path]['count'] > 0;
+        return isset($plugins[$plugin_path]) && $plugins[$plugin_path]['file_count'] > 0;
     }
 
     /**
@@ -153,7 +149,7 @@ class Plugin_Downloads {
         mkdir($temp_git_dir, 0755, true);
 
         $tracker_path = $git_path ?: 'plugins/' . $folder_name;
-        if ($this->git_tracker->build_standalone_git($tracker_path, $temp_git_dir)) {
+        if ($this->git_tracker_manager->build_standalone_git($tracker_path, $temp_git_dir)) {
             $this->add_directory_to_zip($zip, $temp_git_dir . '/.git', $folder_name . '/.git');
         }
 

@@ -181,10 +181,12 @@
                 $preview.slideDown(200);
 
                 if (!$code.html()) {
+                    var pluginPath = $toggle.closest('.ai-plugin-card').data('plugin');
                     $code.html('<span class="loading">' + (aiChanges.strings.loading || 'Loading...') + '</span>');
                     $.post(aiChanges.ajaxUrl, {
                         action: 'ai_assistant_get_commit_diff',
                         nonce: aiChanges.nonce,
+                        plugin_path: pluginPath,
                         sha: sha
                     }, function(response) {
                         if (response.success) {
@@ -204,12 +206,14 @@
                 return;
             }
 
+            var pluginPath = $button.closest('.ai-plugin-card').data('plugin');
             var originalText = $button.text();
             $button.text(aiChanges.strings.revertingToCommit || 'Reverting...').prop('disabled', true);
 
             $.post(aiChanges.ajaxUrl, {
                 action: 'ai_assistant_revert_to_commit',
                 nonce: aiChanges.nonce,
+                plugin_path: pluginPath,
                 sha: sha
             }, function(response) {
                 if (response.success) {

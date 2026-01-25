@@ -12,12 +12,12 @@ class Executor {
 
     private $tools;
     private $wp_content_path;
-    private $git_tracker;
+    private $git_tracker_manager;
 
-    public function __construct(Tools $tools, ?Git_Tracker $git_tracker = null) {
+    public function __construct(Tools $tools, ?Git_Tracker_Manager $git_tracker_manager = null) {
         $this->tools = $tools;
         $this->wp_content_path = WP_CONTENT_DIR;
-        $this->git_tracker = $git_tracker;
+        $this->git_tracker_manager = $git_tracker_manager;
     }
 
     /**
@@ -264,8 +264,8 @@ class Executor {
         }
 
         // Track change in git (after file is written so ai-changes branch captures new content)
-        if ($this->git_tracker) {
-            $this->git_tracker->track_change($path, $existed ? 'modified' : 'created', $old_content, $reason, $conversation_id);
+        if ($this->git_tracker_manager) {
+            $this->git_tracker_manager->track_change($path, $existed ? 'modified' : 'created', $old_content, $reason, $conversation_id);
         }
 
         return [
@@ -327,8 +327,8 @@ class Executor {
             }
 
             // Track change in git (after file is written so ai-changes branch captures new content)
-            if ($this->git_tracker) {
-                $this->git_tracker->track_change($path, 'modified', $original_content, $reason, $conversation_id);
+            if ($this->git_tracker_manager) {
+                $this->git_tracker_manager->track_change($path, 'modified', $original_content, $reason, $conversation_id);
             }
         }
 
@@ -366,8 +366,8 @@ class Executor {
         }
 
         // Track change in git (after file is deleted so ai-changes branch reflects deletion)
-        if ($this->git_tracker && $original_content !== null) {
-            $this->git_tracker->track_change($path, 'deleted', $original_content !== false ? $original_content : null, $reason, $conversation_id);
+        if ($this->git_tracker_manager && $original_content !== null) {
+            $this->git_tracker_manager->track_change($path, 'deleted', $original_content !== false ? $original_content : null, $reason, $conversation_id);
         }
 
         return [
