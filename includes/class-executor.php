@@ -179,6 +179,55 @@ class Executor {
     // ===== FILE OPERATIONS =====
 
     /**
+     * Lint PHP content to check for syntax errors
+     */
+    private function lint_php_content(string $content): array {
+        $previous_error_reporting = error_reporting(0);
+
+        set_error_handler(function($severity, $message, $file, $line) {
+            throw new \ErrorException($message, 0, $severity, $file, $line);
+        });
+
+        try {
+            token_get_all($content, TOKEN_PARSE);
+            restore_error_handler();
+            error_reporting($previous_error_reporting);
+            return ['valid' => true];
+        } catch (\ParseError $e) {
+            restore_error_handler();
+            error_reporting($previous_error_reporting);
+            return [
+                'valid' => false,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ];
+        } catch (\ErrorException $e) {
+            restore_error_handler();
+            error_reporting($previous_error_reporting);
+            return [
+                'valid' => false,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ];
+        } catch (\Throwable $e) {
+            restore_error_handler();
+            error_reporting($previous_error_reporting);
+            return [
+                'valid' => false,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ];
+        }
+    }
+
+    /**
+     * Check if a path is a PHP file
+     */
+    private function is_php_file(string $path): bool {
+        return (bool) preg_match('/\.php$/i', $path);
+    }
+
+    /**
      * Validate and resolve a path within wp-content
      */
     private function resolve_path(string $relative_path): string {
@@ -259,6 +308,18 @@ class Executor {
         $existed = file_exists($full_path);
         $old_content = $existed ? file_get_contents($full_path) : null;
 
+        // Validate PHP syntax before writing
+        if ($this->is_php_file($path)) {
+            $lint_result = $this->lint_php_content($content);
+            if (!$lint_result['valid']) {
+                $error_msg = "PHP syntax error: " . ($lint_result['error'] ?? 'Unknown error');
+                if (isset($lint_result['line'])) {
+                    $error_msg .= " on line " . $lint_result['line'];
+                }
+                throw new \Exception($error_msg);
+            }
+        }
+
         if (file_put_contents($full_path, $content) === false) {
             throw new \Exception("Failed to write file: $path");
         }
@@ -322,6 +383,18 @@ class Executor {
 
         // Only write if at least one edit was applied
         if (count($applied) > 0) {
+            // Validate PHP syntax before writing
+            if ($this->is_php_file($path)) {
+                $lint_result = $this->lint_php_content($content);
+                if (!$lint_result['valid']) {
+                    $error_msg = "PHP syntax error after edits: " . ($lint_result['error'] ?? 'Unknown error');
+                    if (isset($lint_result['line'])) {
+                        $error_msg .= " on line " . $lint_result['line'];
+                    }
+                    throw new \Exception($error_msg);
+                }
+            }
+
             if (file_put_contents($full_path, $content) === false) {
                 throw new \Exception("Failed to write file: $path");
             }
