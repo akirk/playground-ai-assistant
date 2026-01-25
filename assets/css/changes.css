@@ -838,3 +838,105 @@
     color: #2271b1;
     font-weight: 600;
 }
+
+/* Mobile Responsive Styles */
+@media screen and (max-width: 600px) {
+    .ai-plugin-header {
+        flex-wrap: wrap;
+        padding: 12px;
+        gap: 8px;
+    }
+
+    .ai-plugin-header-label {
+        flex-basis: 100%;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .ai-plugin-name {
+        flex-basis: calc(100% - 50px);
+    }
+
+    .ai-plugin-path {
+        display: none;
+    }
+
+    .ai-plugin-stats {
+        flex-basis: 100%;
+        font-size: 12px;
+        order: 1;
+    }
+
+    .ai-plugin-header .button {
+        flex: 1;
+        text-align: center;
+        order: 2;
+    }
+
+    .ai-changes-file-row {
+        flex-wrap: wrap;
+        padding: 10px 12px 10px 12px;
+        gap: 8px;
+    }
+
+    .ai-changes-file-row label {
+        flex-basis: calc(100% - 30px);
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .ai-changes-file-path {
+        flex-basis: 100%;
+        min-width: 0;
+    }
+
+    .ai-lint-status,
+    .ai-changes-type {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+
+    .ai-revert-file,
+    .ai-reapply-file {
+        flex-basis: 100%;
+        text-align: center;
+        margin-left: 0 !important;
+        margin-top: 4px;
+    }
+
+    .ai-file-inline-preview {
+        margin: 0 8px 8px 8px;
+    }
+
+    .ai-commit-row-top {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .ai-commit-message {
+        flex-basis: 100%;
+        order: 3;
+    }
+
+    .ai-commit-conversation {
+        margin-left: 0;
+        order: 2;
+    }
+
+    .ai-commit-diff-preview {
+        margin: 0 8px 12px 8px;
+    }
+
+    .ai-changes-actions {
+        flex-direction: column;
+    }
+
+    .ai-changes-actions .button {
+        width: 100%;
+        text-align: center;
+    }
+
+    .ai-import-section {
+        padding: 15px;
+    }
+}
