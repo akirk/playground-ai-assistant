@@ -54,8 +54,20 @@ if (!function_exists('trailingslashit')) {
     }
 }
 
+if (!function_exists('get_theme_root')) {
+    function get_theme_root() {
+        return WP_CONTENT_DIR . '/themes';
+    }
+}
+
+// Create themes directory
+if (!is_dir(WP_CONTENT_DIR . '/themes')) {
+    mkdir(WP_CONTENT_DIR . '/themes', 0755, true);
+}
+
 // Manual class loading (no Composer autoloader)
 $plugin_dir = dirname(__DIR__);
 require_once $plugin_dir . '/includes/class-tools.php';
 require_once $plugin_dir . '/includes/class-executor.php';
 require_once $plugin_dir . '/includes/class-git-tracker.php';
+require_once $plugin_dir . '/includes/class-git-tracker-manager.php';

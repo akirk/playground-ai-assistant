@@ -1185,20 +1185,26 @@ class Git_Tracker {
     // -------------------------------------------------------------------------
 
     private function ensure_git_structure(): void {
-        if (is_dir($this->git_dir)) {
-            return;
+        $is_new = !is_dir($this->git_dir);
+
+        // Create directories if missing (handles both new and broken existing .git)
+        if (!is_dir($this->git_dir)) {
+            mkdir($this->git_dir, 0755, true);
+        }
+        if (!is_dir($this->git_dir . '/objects')) {
+            mkdir($this->git_dir . '/objects', 0755, true);
+        }
+        if (!is_dir($this->git_dir . '/refs/heads')) {
+            mkdir($this->git_dir . '/refs/heads', 0755, true);
         }
 
-        mkdir($this->git_dir, 0755, true);
-        mkdir($this->git_dir . '/objects', 0755, true);
-        mkdir($this->git_dir . '/refs/heads', 0755, true);
-
-        file_put_contents($this->git_dir . '/HEAD', "ref: refs/heads/main\n");
-        file_put_contents($this->git_dir . '/config', "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n");
-
-        $this->write_index([]);
-        $this->write_created_files([]);
-        // Don't create an empty initial commit - the first update_commit() will create it with actual content
+        // Only initialize files for new .git directories
+        if ($is_new) {
+            file_put_contents($this->git_dir . '/HEAD', "ref: refs/heads/main\n");
+            file_put_contents($this->git_dir . '/config', "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n");
+            $this->write_index([]);
+            $this->write_created_files([]);
+        }
     }
 
     private function to_relative_path(string $path): ?string {
