@@ -184,6 +184,14 @@
                 return;
             }
 
+            // Prevent concurrent saves - queue if one is in progress
+            if (this.saveInProgress) {
+                this.savePending = true;
+                this.savePendingSilent = silent;
+                return;
+            }
+
+            this.saveInProgress = true;
             $.ajax({
                 url: aiAssistantConfig.ajaxUrl,
                 type: 'POST',
@@ -222,6 +230,14 @@
                     console.error('[AI Assistant] Save error:', error);
                     if (!silent) {
                         self.addMessage('error', 'Failed to save conversation.');
+                    }
+                },
+                complete: function() {
+                    self.saveInProgress = false;
+                    // Process queued save if any
+                    if (self.savePending) {
+                        self.savePending = false;
+                        self.saveConversation(self.savePendingSilent);
                     }
                 }
             });

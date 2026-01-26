@@ -1158,6 +1158,7 @@ FILE EDITING RULES:
 - If an edit_file operation fails (string not found or not unique), use read_file to see the current content and retry
 
 PLUGIN CREATION:
+- Always create plugins in their own subdirectory (e.g., plugins/my-plugin-pg-ai/my-plugin-pg-ai.php), NEVER as single files directly in the plugins folder
 - When creating new plugins, always use the suffix "-pg-ai" for the plugin slug (e.g., "gallery-pg-ai", "contact-form-pg-ai")
 - This prevents conflicts with plugins in the WordPress.org directory
 

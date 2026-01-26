@@ -295,6 +295,19 @@ class Executor {
     }
 
     private function write_file(string $path, string $content, string $reason, ?int $conversation_id = null): array {
+        // Prevent single-file plugins/themes - they must be in subdirectories for proper tracking
+        $path_parts = explode('/', ltrim($path, '/'));
+        if (count($path_parts) === 2 && $this->is_php_file($path)) {
+            $type = $path_parts[0];
+            if ($type === 'plugins' || $type === 'themes') {
+                $name = pathinfo($path_parts[1], PATHINFO_FILENAME);
+                throw new \Exception(
+                    "Cannot create single-file {$type}. Create a subdirectory instead: " .
+                    "{$type}/{$name}/{$path_parts[1]}"
+                );
+            }
+        }
+
         $full_path = $this->resolve_path($path);
 
         // Create directory if needed
