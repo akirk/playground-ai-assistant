@@ -896,15 +896,17 @@
     }
 
     .ai-changes-file-row label {
-        flex: 1;
+        flex: 1 1 100%;
         min-width: 0;
-        flex-wrap: wrap;
-        gap: 6px;
+        order: 1;
     }
 
     .ai-changes-file-path {
-        flex: 1 1 100%;
+        flex: 1;
         min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .ai-lint-status,
@@ -915,9 +917,9 @@
 
     .ai-revert-file,
     .ai-reapply-file {
-        flex: 1 1 100%;
-        text-align: center;
-        margin-left: 0 !important;
+        flex: 0 0 auto;
+        margin-left: auto !important;
+        order: 2;
     }
 
     .ai-file-inline-preview {
