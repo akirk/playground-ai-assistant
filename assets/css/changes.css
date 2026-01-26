@@ -848,13 +848,23 @@
     }
 
     .ai-plugin-header-label {
-        flex-basis: 100%;
-        flex-wrap: wrap;
-        gap: 6px;
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .ai-plugin-toggle {
+        padding: 10px;
+        margin: -10px;
+        margin-right: 2px;
+        font-size: 12px;
     }
 
     .ai-plugin-name {
-        flex-basis: calc(100% - 50px);
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .ai-plugin-path {
@@ -862,31 +872,38 @@
     }
 
     .ai-plugin-stats {
-        flex-basis: 100%;
+        flex: 1 1 100%;
         font-size: 12px;
-        order: 1;
+        padding-left: 26px;
     }
 
     .ai-plugin-header .button {
         flex: 1;
         text-align: center;
-        order: 2;
     }
 
     .ai-changes-file-row {
         flex-wrap: wrap;
-        padding: 10px 12px 10px 12px;
+        padding: 10px 12px;
         gap: 8px;
     }
 
+    .ai-file-preview-toggle {
+        padding: 10px;
+        margin: -10px;
+        margin-right: 2px;
+        font-size: 12px;
+    }
+
     .ai-changes-file-row label {
-        flex-basis: calc(100% - 30px);
+        flex: 1;
+        min-width: 0;
         flex-wrap: wrap;
         gap: 6px;
     }
 
     .ai-changes-file-path {
-        flex-basis: 100%;
+        flex: 1 1 100%;
         min-width: 0;
     }
 
@@ -898,10 +915,9 @@
 
     .ai-revert-file,
     .ai-reapply-file {
-        flex-basis: 100%;
+        flex: 1 1 100%;
         text-align: center;
         margin-left: 0 !important;
-        margin-top: 4px;
     }
 
     .ai-file-inline-preview {
@@ -913,8 +929,15 @@
         gap: 6px;
     }
 
+    .ai-commit-diff-toggle {
+        padding: 10px;
+        margin: -10px;
+        margin-right: 2px;
+        font-size: 12px;
+    }
+
     .ai-commit-message {
-        flex-basis: 100%;
+        flex: 1 1 100%;
         order: 3;
     }
 
