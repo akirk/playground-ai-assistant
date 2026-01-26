@@ -264,25 +264,25 @@ class Changes_Admin {
 
                         <div class="ai-plugin-files">
                             <div class="ai-plugin-section-header"><?php esc_html_e('Changed Files', 'ai-assistant'); ?></div>
-                            <?php foreach ($plugin['files'] as $file): ?>
+                            <?php foreach ($plugin['files'] as $file):
+                                $file_id = 'file-' . md5($file['path']);
+                            ?>
                             <div class="ai-changes-file">
                                 <div class="ai-changes-file-row">
+                                    <input type="checkbox" class="ai-file-checkbox" id="<?php echo esc_attr($file_id); ?>"
+                                           data-path="<?php echo esc_attr($file['path']); ?>"
+                                           data-plugin="<?php echo esc_attr($plugin_path); ?>">
                                     <button type="button" class="ai-file-preview-toggle" data-path="<?php echo esc_attr($file['path']); ?>" title="<?php esc_attr_e('Preview diff', 'ai-assistant'); ?>">▶</button>
-                                    <label>
-                                        <input type="checkbox" class="ai-file-checkbox"
-                                               data-path="<?php echo esc_attr($file['path']); ?>"
-                                               data-plugin="<?php echo esc_attr($plugin_path); ?>">
-                                        <span class="ai-changes-file-path"><?php echo esc_html($file['relative_path'] ?: basename($file['path'])); ?></span>
-                                        <span class="ai-lint-status" data-path="<?php echo esc_attr($file['path']); ?>"></span>
-                                        <span class="ai-changes-type ai-changes-type-<?php echo esc_attr($file['change_type']); ?>">
-                                            <?php echo esc_html(ucfirst($file['change_type'])); ?>
-                                        </span>
-                                        <?php if (!empty($file['is_reverted'])): ?>
-                                        <span class="ai-changes-type ai-changes-type-reverted">
-                                            <?php esc_html_e('Reverted', 'ai-assistant'); ?>
-                                        </span>
-                                        <?php endif; ?>
-                                    </label>
+                                    <label class="ai-changes-file-path" for="<?php echo esc_attr($file_id); ?>"><?php echo esc_html($file['relative_path'] ?: basename($file['path'])); ?></label>
+                                    <span class="ai-lint-status" data-path="<?php echo esc_attr($file['path']); ?>"></span>
+                                    <span class="ai-changes-type ai-changes-type-<?php echo esc_attr($file['change_type']); ?>">
+                                        <?php echo esc_html(ucfirst($file['change_type'])); ?>
+                                    </span>
+                                    <?php if (!empty($file['is_reverted'])): ?>
+                                    <span class="ai-changes-type ai-changes-type-reverted">
+                                        <?php esc_html_e('Reverted', 'ai-assistant'); ?>
+                                    </span>
+                                    <?php endif; ?>
                                     <?php if (!empty($file['is_reverted'])): ?>
                                     <button type="button" class="button button-small ai-reapply-file" data-path="<?php echo esc_attr($file['path']); ?>" title="<?php esc_attr_e('Reapply this change', 'ai-assistant'); ?>">
                                         <?php esc_html_e('Reapply', 'ai-assistant'); ?>
